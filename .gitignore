@@ -1,0 +1,4 @@
+*.zip
+temp/
+**/node_modules/**
+combined.txt
