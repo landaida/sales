@@ -1,5 +1,4 @@
 import React from 'react'
-import { GoogleSheetsRepo } from './storage/GoogleSheetsRepo'
 import SaleTicket from './components/SaleTicket'
 import StockView from './components/StockView'
 import PaymentsHistory from './components/PaymentsHistory'

@@ -1,4 +1,5 @@
 *.zip
 temp/
+bkp/
 **/node_modules/**
 combined.txt
