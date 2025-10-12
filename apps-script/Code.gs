@@ -119,12 +119,12 @@ function variantStockMap_(){
   }
   var ventas = sheetByName_('Ventas')
   if (ventas){
-    var vrows = ventas.getRange(2,1,Math.max(0,ventas.getLastRow()-1),14).getValues()
+    var vrows = ventas.getRange(2,1,Math.max(0,ventas.getLastRow()-1),15).getValues()
     for (var j=0;j<vrows.length;j++){
       var v = vrows[j]
-      var vcode = String(v[3]||'').trim(); if (!vcode) continue
-      var vcolor = String(v[5]||'').trim(); var vsize = String(v[6]||'').trim()
-      var vqty = toNum_(v[7]||0)
+      var vcode = String(v[4]||'').trim(); if (!vcode) continue
+      var vcolor = String(v[6]||'').trim(); var vsize = String(v[7]||'').trim()
+      var vqty = toNum_(v[8]||0)
       var vk = vcode+'|'+vcolor+'|'+vsize
       out[vk] = (out[vk]||0) - vqty
     }
@@ -170,10 +170,11 @@ function searchProducts_(q){
 
 // Register a sale ticket, update Productos stock and append lines to "Ventas"
 function saleTicket_(data){
-  var s = ensureSheet_('Ventas', ['Fecha','Ticket','Cliente','Codigo','Producto','Color','Talla','Cantidad','PrecioUnitario','Desc%','PrecioOverride','TotalLinea','Credito','Vencimiento'])
+  var s = ensureSheet_('Ventas', ['Fecha','Ticket','ClienteNombre','ClienteID','Codigo','Producto','Color','Talla','Cantidad','PrecioUnitario','Desc%','PrecioOverride','TotalLinea','Credito','Vencimiento'])
   var now = new Date()
   var ticket = 'T'+now.getFullYear()+('0'+(now.getMonth()+1)).slice(-2)+('0'+now.getDate()).slice(-2)+'-'+now.getTime()
-  var customer = String(data.customer||'')
+  var customerName = String(data.customerName||'')
+  var customerId = String(data.customerId||'')
   var items = data.items||[]
   var credit = !!data.credit
   var dueDate = data.dueDate ? new Date(data.dueDate) : ''
@@ -190,13 +191,23 @@ function saleTicket_(data){
     var finalUnit = priceOverride!=null ? priceOverride : (unit * (1 - discountPct/100))
     var lineTotal = finalUnit * qty
     subtotal += lineTotal
-    rows.push([ now, ticket, customer, code, name, String(it.color||''), String(it.size||''), qty, unit, discountPct, priceOverride, lineTotal, credit?1:0, dueDate ])
+    rows.push([ now, ticket, customerName, customerId, code, name, String(it.color||''), String(it.size||''), qty, unit, discountPct, priceOverride, lineTotal, credit?1:0, dueDate ])
     try{ applySaleToStock_(code, qty) }catch(e){ /* stock write-back best effort */ }
   }
   if (rows.length) s.getRange(s.getLastRow()+1,1,rows.length,rows[0].length).setValues(rows)
-  var discountTotalPct = toNum_(data.discountTotalPct||0)
-  var total = subtotal * (1 - discountTotalPct/100)
-  return { ok:true, ticket, subtotal, discountTotalPct, total }
+  var discountMode = String(data.discountMode||'percent')
+  var discountValue = toNum_(data.discountValue||0)
+  var discountTotalValue = 0
+  var discountTotalPct = 0
+  if (discountMode === 'value'){
+    discountTotalValue = Math.min(subtotal, Math.max(0, discountValue))
+    discountTotalPct = subtotal ? (discountTotalValue / subtotal) * 100 : 0
+  } else {
+    discountTotalPct = Math.max(0, discountValue)
+    discountTotalValue = subtotal * (discountTotalPct/100)
+  }
+  var total = Math.max(0, subtotal - discountTotalValue)
+  return { ok:true, ticket, subtotal, discountTotalPct, discountTotalValue, total }
 }
 
 // === Web App ===
