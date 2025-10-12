@@ -200,6 +200,15 @@ export default function SaleTicket(){
     }
   }
 
+  const buttonBaseStyle: React.CSSProperties = {
+    display: 'grid',
+    gap: 4,
+    padding: 12,
+    borderRadius: 10,
+    textAlign: 'left',
+    lineHeight: 1.3,
+  }
+
   return (
     <section>
       <h2>Registrar venta (ticket)</h2>
@@ -208,33 +217,66 @@ export default function SaleTicket(){
         <button onClick={loadCatalog} disabled={loading}>{loading?'Actualizando...':'Actualizar stock'}</button>
       </div>
       {error && <div style={{color:'red', marginBottom:8}}>{error}</div>}
-      <div style={{display:'flex', gap:24, alignItems:'flex-start'}}>
-        <div style={{flex:1}}>
+      <div style={{display:'flex', flexDirection:'row', gap:24, alignItems:'flex-start', flexWrap:'wrap'}}>
+        <div style={{flex:1, minWidth:300}}>
+          <h3>Stock disponible</h3>
+          <div style={{display:'grid', gap:12, gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))'}}>
+            {filteredCatalog.map((variant)=>{
+              const key = variantKey(variant)
+              const disabled = variant.stock<=0
+              return (
+                <button
+                  key={key}
+                  onClick={()=>addVariant(variant)}
+                  disabled={disabled}
+                  style={{
+                    ...buttonBaseStyle,
+                    border:'1px solid '+(disabled?'#d0d0d0':'#1976d2'),
+                    background: disabled?'#f5f5f5':'#e3f2fd',
+                    color:'#111',
+                    cursor: disabled?'not-allowed':'pointer',
+                    opacity: disabled?0.8:1
+                  }}
+                >
+                  <span style={{fontWeight:700, fontSize:15}}>{variant.code}</span>
+                  <span style={{fontSize:13}}>{variant.name}</span>
+                  <span style={{fontSize:12, fontWeight:600}}>{`${variant.size || 'N/A'} - ${variant.color || 'N/A'} - ${variant.stock}`}</span>
+                </button>
+              )
+            })}
+          </div>
+          {!loading && !filteredCatalog.length && <div style={{marginTop:12}}>No hay productos con stock que coincidan con la búsqueda.</div>}
+        </div>
+        <div style={{flex:1, minWidth:300}}>
           <h3>Factura</h3>
           {cart.length===0 && <div style={{marginBottom:12}}>Seleccione productos para agregarlos a la factura.</div>}
-          <div style={{display:'flex', flexDirection:'column', gap:12}}>
+          <div style={{display:'grid', gap:12, gridTemplateColumns:'repeat(auto-fill, minmax(220px, 1fr))'}}>
             {cart.map(item=>{
               const override = item.priceOverride!=='' ? parseNumber(item.priceOverride) : null
               const unit = override!==null ? override : parseNumber(item.unitPrice)
               const lineTotal = unit * item.qty
               return (
-                <div key={item.key} style={{border:'1px solid #ccc', borderRadius:8, padding:8, background:'#f7f7f7'}}>
-                  <button onClick={()=>decrementCart(item)} style={{width:'100%', textAlign:'left', border:'none', background:'transparent', cursor:'pointer'}}>
-                    <div style={{fontWeight:'bold'}}>{item.code}</div>
-                    <div>{item.name}</div>
-                    <div style={{fontSize:12, opacity:0.8}}>Color: {item.color || 'N/A'} · Talla: {item.size || 'N/A'}</div>
-                    <div style={{marginTop:4, display:'flex', justifyContent:'space-between'}}>
-                      <span>Cantidad: {item.qty}</span>
-                      <span>Total línea: {Math.round(lineTotal)}</span>
-                    </div>
-                    <div style={{fontSize:12, opacity:0.7}}>Click para quitar una unidad</div>
+                <div key={item.key} style={{display:'grid', gap:8}}>
+                  <button
+                    onClick={()=>decrementCart(item)}
+                    style={{
+                      ...buttonBaseStyle,
+                      border:'1px solid #f57c00',
+                      background:'#fff3e0',
+                      cursor:'pointer'
+                    }}
+                  >
+                    <span style={{fontWeight:700, fontSize:15}}>{item.code}</span>
+                    <span style={{fontSize:13}}>{item.name}</span>
+                    <span style={{fontSize:12, fontWeight:600}}>{`${item.size || 'N/A'} - ${item.color || 'N/A'} - ${item.qty}`}</span>
+                    <span style={{fontSize:11, opacity:0.8}}>Total línea: {Math.round(lineTotal)} · Click para quitar una unidad</span>
                   </button>
-                  <div style={{marginTop:6, display:'flex', gap:8, flexWrap:'wrap'}}>
-                    <label style={{display:'flex', flexDirection:'column', fontSize:12}}>
+                  <div style={{display:'flex', gap:8, flexWrap:'wrap', fontSize:12}}>
+                    <label style={{display:'grid', gap:4}}>
                       Precio unitario
                       <input value={item.unitPrice} onChange={e=>updateCartField(item.key,'unitPrice',e.target.value)} style={{width:110}} />
                     </label>
-                    <label style={{display:'flex', flexDirection:'column', fontSize:12}}>
+                    <label style={{display:'grid', gap:4}}>
                       Precio override
                       <input value={item.priceOverride} onChange={e=>updateCartField(item.key,'priceOverride',e.target.value)} style={{width:110}} placeholder="Opcional" />
                     </label>
@@ -243,29 +285,6 @@ export default function SaleTicket(){
               )
             })}
           </div>
-        </div>
-        <div style={{flex:1}}>
-          <h3>Stock disponible</h3>
-          <div style={{display:'grid', gap:12, gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))'}}>
-            {filteredCatalog.map((variant)=>{
-              const key = variantKey(variant)
-              const disabled = variant.stock<=0
-              return (
-                <button key={key} onClick={()=>addVariant(variant)} disabled={disabled} style={{
-                  display:'flex', flexDirection:'column', gap:4, padding:12,
-                  borderRadius:8, border:'1px solid '+(disabled?'#ddd':'#1976d2'),
-                  background: disabled?'#f0f0f0':'#e3f2fd', color:'#111', cursor: disabled?'not-allowed':'pointer'
-                }}>
-                  <span style={{fontWeight:600}}>{variant.code}</span>
-                  <span>{variant.name}</span>
-                  <span style={{fontSize:12}}>Color: {variant.color || 'N/A'}</span>
-                  <span style={{fontSize:12}}>Talla: {variant.size || 'N/A'}</span>
-                  <span style={{fontSize:12, fontWeight:600}}>Stock: {variant.stock}</span>
-                </button>
-              )
-            })}
-          </div>
-          {!loading && !filteredCatalog.length && <div style={{marginTop:12}}>No hay productos con stock que coincidan con la búsqueda.</div>}
         </div>
       </div>
 
@@ -276,7 +295,7 @@ export default function SaleTicket(){
         <label>Identificador del cliente
           <input value={customerId} onChange={e=>setCustomerId(e.target.value)} placeholder="Alfanumérico" />
         </label>
-        <div style={{display:'flex', gap:12, alignItems:'center'}}>
+        <div style={{display:'flex', gap:12, alignItems:'center', flexWrap:'wrap'}}>
           <label><input type="radio" checked={discountMode==='percent'} onChange={()=>setDiscountMode('percent')} /> %</label>
           <label><input type="radio" checked={discountMode==='value'} onChange={()=>setDiscountMode('value')} /> Valor</label>
           <input value={discountValue} onChange={e=>setDiscountValue(e.target.value)} style={{width:120}} />
