@@ -1,3 +1,4 @@
+import { VariantItem, SaleItem } from './IRepository';
 export interface IRepository {
   listProducts(): Promise<{ ok: true; items: any[] }>
   getInventory(): Promise<{ ok: true; items: any[] }>
@@ -9,7 +10,7 @@ export interface IRepository {
 
   // NEW:
   searchProducts(q:string): Promise<{ ok:true; items:any[] }>
-  listVariants(code:string): Promise<{ ok:true; code:string; name:string; price:number; variants:any[] }>
+  // listVariants(code:string): Promise<{ ok:true; code:string; name:string; price:number; variants:any[] }>
   saleTicket(payload:any): Promise<any>
 }
 
@@ -19,6 +20,7 @@ const API = (path:string)=> {
   const q = path.startsWith('http') ? path : (base + (base.includes('?') ? '&' : (base.endsWith('/exec')?'?':'/exec?')) + path)
   return q
 }
+
 export async function jget(qs:string){
   const url = API(qs + (qs.includes('?')?'':'') + `&key=${encodeURIComponent(import.meta.env.VITE_API_KEY||'dev-key')}`)
   const r = await fetch(url); return r.json()
@@ -40,6 +42,18 @@ export class GoogleSheetsRepo implements IRepository {
 
   // NEW
   async searchProducts(q:string){ return jget('action=search&q='+encodeURIComponent(q)) }
-  async listVariants(code:string){ return jget('action=variants&code='+encodeURIComponent(code)) }
+  // async listVariants(code:string){ return jget('action=variants&code='+encodeURIComponent(code)) }
   async saleTicket(payload:any){ return jpost({ action:'sale', ...payload }) }
+
+  async listVariants(): Promise<{ ok: boolean; items: VariantItem[] }> {
+    return jget(`action=variants`);
+  }
+  async submitSale(payload: {
+    customer: { name: string; id: string };
+    discountTotal?: number;
+    dueDate?: string;
+    items: SaleItem[];
+  }): Promise<{ ok: boolean; ticketId: string; total: number }> {
+    return jpost({ action:'sale', ...payload });
+  }
 }

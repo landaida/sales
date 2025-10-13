@@ -1,312 +1,191 @@
-import React from 'react'
-import { GoogleSheetsRepo } from '../storage/GoogleSheetsRepo'
+// src/components/SaleTicket.tsx
+import React, { useEffect, useMemo, useState } from 'react';
+import { GoogleSheetsRepo } from '../storage/GoogleSheetsRepo';
+import type { VariantItem, SaleItem } from '../storage/IRepository';
 
-const repo = new GoogleSheetsRepo()
-
-type Variant = { code:string; name:string; color:string; size:string; stock:number; unitPrice:number }
-type CartItem = {
-  key:string
-  code:string
-  name:string
-  color:string
-  size:string
-  qty:number
-  unitPrice:string
-  priceOverride:string
-}
-
-const variantKey = (v:{code:string; color:string; size:string})=>`${v.code}|${v.color}|${v.size}`
-
-function parseNumber(value:string|number){
-  if (typeof value === 'number') return isNaN(value) ? 0 : value
-  const normalized = value.replace(/,/g,'.').replace(/[^0-9.-]/g,'')
-  const n = Number(normalized)
-  return isNaN(n) ? 0 : n
-}
-
-function isAlphaNumeric(text:string){
-  if (!text) return true
-  return /^[\p{L}\p{N}\s_.-]+$/u.test(text)
-}
+const repo = new GoogleSheetsRepo();
+const keyOf = (v:{code:string;color:string;size:string}) => `${v.code}|${v.color}|${v.size}`;
 
 export default function SaleTicket(){
-  const [catalog,setCatalog] = React.useState<Variant[]>([])
-  const [filter,setFilter] = React.useState('')
-  const [cart,setCart] = React.useState<CartItem[]>([])
-  const [customerName,setCustomerName] = React.useState('')
-  const [customerId,setCustomerId] = React.useState('')
-  const [discountMode,setDiscountMode] = React.useState<'percent'|'value'>('percent')
-  const [discountValue,setDiscountValue] = React.useState('0')
-  const [credit,setCredit] = React.useState(false)
-  const [dueDate,setDueDate] = React.useState('')
-  const [loading,setLoading] = React.useState(false)
-  const [error,setError] = React.useState('')
+  const [variants, setVariants] = useState<VariantItem[]>([]);
+  const [stock, setStock] = useState<Record<string, number>>({});
+  const [cart, setCart] = useState<Record<string, SaleItem>>({});
+  const [custName, setCustName] = useState('');
+  const [custId,   setCustId]   = useState('');
+  const [discount, setDiscount] = useState<number>(0);
 
-  React.useEffect(()=>{ loadCatalog() },[])
+  // Load variants with stock
+  useEffect(()=>{
+    repo.listVariants().then(r=>{
+      if (!r.ok) return;
+      setVariants(r.items);
+      const m: Record<string, number> = {};
+      r.items.forEach(v=> m[keyOf(v)] = v.stock);
+      setStock(m);
+    });
+  },[]);
 
-  async function loadCatalog(){
-    setLoading(true)
-    setError('')
-    try {
-      const res = await repo.searchProducts('')
-      if (res?.ok){
-        const list:Variant[] = []
-        (res.items||[]).forEach((item:any)=>{
-          const unit = parseNumber(item.price||0)
-          (item.variants||[]).forEach((v:any)=>{
-            const stock = Number(v.stock||0)
-            if (stock>0){
-              list.push({
-                code: item.code,
-                name: item.name || String(item.code),
-                color: v.color || '',
-                size: v.size || '',
-                stock,
-                unitPrice: unit
-              })
-            }
-          })
-        })
-        list.sort((a,b)=>{
-          if (b.stock!==a.stock) return b.stock-a.stock
-          return String(a.name).localeCompare(String(b.name))
-        })
-        setCatalog(list)
-      } else {
-        setCatalog([])
-        setError(res?.error || 'No se pudieron cargar los productos con stock')
-      }
-    } catch (err){
-      setCatalog([])
-      setError('No se pudieron cargar los productos con stock')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  function addVariant(v:Variant){
-    if ((v.stock||0) <= 0) return
-    const key = variantKey(v)
-    setCatalog(prev=> prev.map(it=> variantKey(it)===key ? { ...it, stock: Math.max(0, (it.stock||0)-1) } : it))
+  // Left click => move 1 unit to ticket
+  function add(v: VariantItem){
+    const k = keyOf(v);
+    setStock(prev=>{
+      const cur = prev[k] ?? v.stock;
+      if (cur<=0) return prev;
+      return { ...prev, [k]: cur-1 };
+    });
     setCart(prev=>{
-      const idx = prev.findIndex(it=> it.key===key)
-      if (idx>=0){
-        const clone = [...prev]
-        clone[idx] = { ...clone[idx], qty: clone[idx].qty + 1 }
-        return clone
-      }
-      return [...prev, {
-        key,
-        code: v.code,
-        name: v.name,
-        color: v.color,
-        size: v.size,
-        qty: 1,
-        unitPrice: String(v.unitPrice ?? ''),
-        priceOverride: ''
-      }]
-    })
+      const item = prev[k];
+      if (!item) return { ...prev, [k]: { code:v.code, name:v.name, color:v.color, size:v.size, qty:1, price: v.defaultPrice||0 } };
+      return { ...prev, [k]: { ...item, qty:item.qty+1 } };
+    });
   }
 
-  function decrementCart(item:CartItem){
-    const key = item.key
-    let updated = false
+  // Right panel click => return 1 unit to stock
+  function remove(k:string){
     setCart(prev=>{
-      const idx = prev.findIndex(it=> it.key===key)
-      if (idx===-1) return prev
-      updated = true
-      const clone = [...prev]
-      const target = clone[idx]
-      const nextQty = target.qty - 1
-      if (nextQty<=0){
-        clone.splice(idx,1)
-      } else {
-        clone[idx] = { ...target, qty: nextQty }
-      }
-      return clone
-    })
-    if (updated){
-      setCatalog(prev=> prev.map(it=> variantKey(it)===key ? { ...it, stock: (it.stock||0)+1 } : it))
-    }
+      const item = prev[k]; if (!item) return prev;
+      const next = { ...prev };
+      if (item.qty<=1) delete next[k];
+      else next[k] = { ...item, qty:item.qty-1 };
+      return next;
+    });
+    setStock(prev=> ({ ...prev, [k]: (prev[k]??0)+1 }));
   }
 
-  function updateCartField(key:string, field:keyof Pick<CartItem,'unitPrice'|'priceOverride'>, value:string){
-    setCart(prev=> prev.map(item=> item.key===key ? { ...item, [field]: value } : item))
-  }
-
-  const filteredCatalog = React.useMemo(()=>{
-    const term = filter.trim().toUpperCase()
-    if (!term) return catalog
-    return catalog.filter(v=>{
-      const haystack = `${v.code} ${v.name} ${v.color} ${v.size}`.toUpperCase()
-      return haystack.indexOf(term)>=0
-    })
-  },[catalog, filter])
-
-  const subtotal = cart.reduce((acc,row)=>{
-    const qty = Number(row.qty||0)
-    const override = row.priceOverride!=='' ? parseNumber(row.priceOverride) : null
-    const unit = override!==null ? override : parseNumber(row.unitPrice)
-    return acc + unit * qty
-  }, 0)
-
-  const rawDiscount = Math.max(0, parseNumber(discountValue))
-  const discountAsValue = discountMode==='value' ? Math.min(subtotal, rawDiscount) : subtotal * (Math.max(0, rawDiscount)/100)
-  const discountAsPercent = subtotal ? (discountAsValue / subtotal) * 100 : 0
-  const total = Math.max(0, subtotal - discountAsValue)
+  const subtotal = useMemo(()=> Object.values(cart)
+    .reduce((acc,it)=> acc + it.qty*it.price, 0), [cart]);
+  const total = Math.max(0, subtotal - (discount||0));
 
   async function submit(){
-    if (!cart.length) return alert('Agregue productos a la factura')
-    const name = customerName.trim()
-    const identifier = customerId.trim()
-    if (!isAlphaNumeric(name)) return alert('El nombre del cliente debe ser alfanumérico')
-    if (!isAlphaNumeric(identifier)) return alert('El identificador del cliente debe ser alfanumérico')
-    if (credit){
-      if (!name || !identifier) return alert('Para ventas a crédito se requieren nombre e identificador del cliente')
-      if (!dueDate) return alert('Seleccione la fecha de vencimiento del crédito')
+    if (!custName.trim() || !custId.trim()){
+      alert('Cliente: nombre e identificador requeridos'); return;
     }
-    const normalizedDiscountValue = discountMode==='value' ? Math.min(subtotal, rawDiscount) : Math.max(0, rawDiscount)
-    const payload = {
-      customerName: name,
-      customerId: identifier,
-      discountMode,
-      discountValue: normalizedDiscountValue,
-      credit,
-      dueDate: credit ? dueDate : '',
-      items: cart.map(row=>({
-        code: row.code,
-        name: row.name,
-        qty: Number(row.qty||0),
-        unitPrice: parseNumber(row.unitPrice),
-        discountPct: 0,
-        priceOverride: row.priceOverride!=='' ? parseNumber(row.priceOverride) : '',
-        color: row.color,
-        size: row.size
-      }))
-    }
-    const res = await repo.saleTicket(payload)
-    if (res?.ok){
-      alert(`Venta registrada. Ticket ${res.ticket}. Total: ${Math.round(res.total)}`)
-      setCart([])
-      setCustomerName('')
-      setCustomerId('')
-      setDiscountValue('0')
-      setDiscountMode('percent')
-      setCredit(false)
-      setDueDate('')
-      loadCatalog()
+    const items = Object.values(cart);
+    if (!items.length){ alert('No hay ítems en el ticket'); return; }
+    const res = await repo.submitSale({
+      customer: { name: custName.trim(), id: custId.trim() },
+      discountTotal: discount||0,
+      items
+    });
+    if (res.ok){
+      alert(`Venta OK. Ticket ${res.ticketId}. Total ${res.total}`);
+      // Reset ticket y refrescar stock desde el backend
+      setCart({});
+      const r = await repo.listVariants();
+      if (r.ok){
+        setVariants(r.items);
+        const m:Record<string,number> = {};
+        r.items.forEach(v=> m[keyOf(v)] = v.stock);
+        setStock(m);
+      }
     } else {
-      alert('Error: '+(res?.error||'unknown'))
+      alert('Error al registrar la venta');
     }
   }
 
-  const buttonBaseStyle: React.CSSProperties = {
-    display: 'grid',
-    gap: 4,
-    padding: 12,
-    borderRadius: 10,
-    textAlign: 'left',
-    lineHeight: 1.3,
+  // NEW: filter + sort state
+const [filterText, setFilterText] = useState('');
+const [sortKey, setSortKey] = useState<'code_asc'|'code_desc'|'desc_asc'|'desc_desc'|'stock_asc'|'stock_desc'>('desc_asc');
+
+// Utility: split by spaces and check AND contains over code/name
+function matchVariant(v: VariantItem, terms: string[]): boolean {
+  const code = (v.code || '').toUpperCase();
+  const name = (v.name || '').toUpperCase();
+  const size = (v.size || '').toUpperCase();
+  const color = (v.color || '').toUpperCase();
+  return terms.every(t => code.includes(t) || name.includes(t) || size.includes(t) || color.includes(t));
+}
+
+// NEW: build visible list based on filter + sort
+const visible = useMemo(()=>{
+  const terms = filterText.trim().toUpperCase().split(/\s+/).filter(Boolean);
+  let arr = variants.filter(v => {
+    if ((stock[keyOf(v)] ?? v.stock) < 0) return false;  // safeguard
+    if (!terms.length) return true;
+    return matchVariant(v, terms);
+  });
+
+  switch (sortKey) {
+    case 'code_asc':   arr.sort((a,b)=> String(a.code).localeCompare(String(b.code))); break;
+    case 'code_desc':  arr.sort((a,b)=> String(b.code).localeCompare(String(a.code))); break;
+    case 'desc_asc':   arr.sort((a,b)=> String(a.name).localeCompare(String(b.name))); break;
+    case 'desc_desc':  arr.sort((a,b)=> String(b.name).localeCompare(String(a.name))); break;
+    case 'stock_asc':  arr.sort((a,b)=> (stock[keyOf(a)] ?? a.stock) - (stock[keyOf(b)] ?? b.stock)); break;
+    case 'stock_desc': arr.sort((a,b)=> (stock[keyOf(b)] ?? b.stock) - (stock[keyOf(a)] ?? a.stock)); break;
   }
+  return arr;
+}, [variants, stock, filterText, sortKey]);
+
 
   return (
-    <section>
-      <h2>Registrar venta (ticket)</h2>
-      <div style={{display:'flex', gap:12, alignItems:'center', marginBottom:12}}>
-        <input value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Buscar por código, nombre, color o talla" />
-        <button onClick={loadCatalog} disabled={loading}>{loading?'Actualizando...':'Actualizar stock'}</button>
+    
+    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+      {/* STOCK (izquierda) */}
+      <div>
+      <h3>Stock</h3>
+      <div style={{display:'flex', gap:8, marginBottom:8, alignItems:'center'}}>
+        <input
+          placeholder="Filtrar por desc. o código (palabras = AND)"
+          value={filterText}
+          onChange={e=>setFilterText(e.target.value)}
+          style={{flex:1}}
+        />
+        {/* simple select as sort icon substitute */}
+        <select value={sortKey} onChange={e=>setSortKey(e.target.value as any)} title="Ordenar">
+          <option value="desc_asc">desc. asc</option>
+          <option value="desc_desc">desc. desc</option>
+          <option value="code_asc">cód. asc</option>
+          <option value="code_desc">cód. desc</option>
+          <option value="stock_asc">stock asc</option>
+          <option value="stock_desc">stock desc</option>
+        </select>
       </div>
-      {error && <div style={{color:'red', marginBottom:8}}>{error}</div>}
-      <div style={{display:'flex', flexDirection:'row', gap:24, alignItems:'flex-start', flexWrap:'wrap'}}>
-        <div style={{flex:1, minWidth:300}}>
-          <h3>Stock disponible</h3>
-          <div style={{display:'grid', gap:12, gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))'}}>
-            {filteredCatalog.map((variant)=>{
-              const key = variantKey(variant)
-              const disabled = variant.stock<=0
-              return (
-                <button
-                  key={key}
-                  onClick={()=>addVariant(variant)}
-                  disabled={disabled}
-                  style={{
-                    ...buttonBaseStyle,
-                    border:'1px solid '+(disabled?'#d0d0d0':'#1976d2'),
-                    background: disabled?'#f5f5f5':'#e3f2fd',
-                    color:'#111',
-                    cursor: disabled?'not-allowed':'pointer',
-                    opacity: disabled?0.8:1
-                  }}
-                >
-                  <span style={{fontWeight:700, fontSize:15}}>{variant.code}</span>
-                  <span style={{fontSize:13}}>{variant.name}</span>
-                  <span style={{fontSize:12, fontWeight:600}}>{`${variant.size || 'N/A'} - ${variant.color || 'N/A'} - ${variant.stock}`}</span>
-                </button>
-              )
-            })}
-          </div>
-          {!loading && !filteredCatalog.length && <div style={{marginTop:12}}>No hay productos con stock que coincidan con la búsqueda.</div>}
-        </div>
-        <div style={{flex:1, minWidth:300}}>
-          <h3>Factura</h3>
-          {cart.length===0 && <div style={{marginBottom:12}}>Seleccione productos para agregarlos a la factura.</div>}
-          <div style={{display:'grid', gap:12, gridTemplateColumns:'repeat(auto-fill, minmax(220px, 1fr))'}}>
-            {cart.map(item=>{
-              const override = item.priceOverride!=='' ? parseNumber(item.priceOverride) : null
-              const unit = override!==null ? override : parseNumber(item.unitPrice)
-              const lineTotal = unit * item.qty
-              return (
-                <div key={item.key} style={{display:'grid', gap:8}}>
-                  <button
-                    onClick={()=>decrementCart(item)}
-                    style={{
-                      ...buttonBaseStyle,
-                      border:'1px solid #f57c00',
-                      background:'#fff3e0',
-                      cursor:'pointer'
-                    }}
-                  >
-                    <span style={{fontWeight:700, fontSize:15}}>{item.code}</span>
-                    <span style={{fontSize:13}}>{item.name}</span>
-                    <span style={{fontSize:12, fontWeight:600}}>{`${item.size || 'N/A'} - ${item.color || 'N/A'} - ${item.qty}`}</span>
-                    <span style={{fontSize:11, opacity:0.8}}>Total línea: {Math.round(lineTotal)} · Click para quitar una unidad</span>
-                  </button>
-                  <div style={{display:'flex', gap:8, flexWrap:'wrap', fontSize:12}}>
-                    <label style={{display:'grid', gap:4}}>
-                      Precio unitario
-                      <input value={item.unitPrice} onChange={e=>updateCartField(item.key,'unitPrice',e.target.value)} style={{width:110}} />
-                    </label>
-                    <label style={{display:'grid', gap:4}}>
-                      Precio override
-                      <input value={item.priceOverride} onChange={e=>updateCartField(item.key,'priceOverride',e.target.value)} style={{width:110}} placeholder="Opcional" />
-                    </label>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px,1fr))', gap:8 }}>
+          {visible.map(v=>{
+            const k = keyOf(v);
+            const s = stock[k] ?? v.stock;
+            const disabled = s<=0;
+            return (
+              <button key={k} onClick={()=>!disabled && add(v)}
+                style={{ padding:10, border:'1px solid #ccc', borderRadius:8, textAlign:'left',
+                         cursor: disabled?'not-allowed':'pointer', opacity: disabled?0.5:1 }}>
+                <div style={{ fontWeight:700 }}>{v.code}</div>
+                <div style={{ fontSize:12 }}>{v.name}</div>
+                <div style={{ fontSize:12 }}>{v.size} - {s} - {v.color}</div>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      <div style={{display:'grid', gap:8, maxWidth:520, marginTop:16}}>
-        <label>Nombre del cliente
-          <input value={customerName} onChange={e=>setCustomerName(e.target.value)} placeholder="Alfanumérico" />
-        </label>
-        <label>Identificador del cliente
-          <input value={customerId} onChange={e=>setCustomerId(e.target.value)} placeholder="Alfanumérico" />
-        </label>
-        <div style={{display:'flex', gap:12, alignItems:'center', flexWrap:'wrap'}}>
-          <label><input type="radio" checked={discountMode==='percent'} onChange={()=>setDiscountMode('percent')} /> %</label>
-          <label><input type="radio" checked={discountMode==='value'} onChange={()=>setDiscountMode('value')} /> Valor</label>
-          <input value={discountValue} onChange={e=>setDiscountValue(e.target.value)} style={{width:120}} />
+      {/* TICKET (derecha) */}
+      <div>
+        <h3>Venta</h3>
+        <div style={{ display:'flex', gap:8, marginBottom:8 }}>
+          <input placeholder="Cliente (Nombre)*" value={custName} onChange={e=>setCustName(e.target.value)} />
+          <input placeholder="Doc Cliente (ID)*" value={custId} onChange={e=>setCustId(e.target.value)} />
         </div>
-        <label><input type="checkbox" checked={credit} onChange={e=>setCredit(e.target.checked)} /> Venta a crédito</label>
-        {credit && <label>Vencimiento <input type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} /></label>}
-        <div>Subtotal: <b>{Math.round(subtotal)}</b></div>
-        <div>Descuento aplicado: <b>{Math.round(discountAsValue)} ({discountAsPercent.toFixed(2)}%)</b></div>
-        <div>Total: <b>{Math.round(total)}</b></div>
-        <div><button onClick={submit} disabled={loading || !cart.length}>Confirmar venta</button></div>
+
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px,1fr))', gap:8, minHeight:120, border:'1px dashed #aaa', borderRadius:8, padding:8 }}>
+          {Object.entries(cart).map(([k,it])=>{
+            return (
+              <button key={k} onClick={()=>remove(k)} style={{ padding:10, border:'1px solid #888', borderRadius:8, textAlign:'left', background:'#fafafa' }}>
+                <div style={{ fontWeight:700 }}>{it.code}</div>
+                <div style={{ fontSize:12 }}>{it.name}</div>
+                <div style={{ fontSize:12 }}>{it.size} - {it.qty} - {it.color}</div>
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ marginTop:12, display:'grid', gap:6, maxWidth:360 }}>
+          <div>Subtotal: <b>{subtotal.toFixed(0)} Gs</b></div>
+          <div>Descuento total (valor): <input type="number" value={discount} onChange={e=>setDiscount(Number(e.target.value)||0)} style={{ width:120 }} /></div>
+          <div>A pagar: <b>{total.toFixed(0)} Gs</b></div>
+          <div><button onClick={submit} style={{ padding:'8px 16px', fontWeight:700, borderRadius:8 }}>Registrar venta</button></div>
+        </div>
       </div>
-    </section>
-  )
+    </div>
+  );
 }

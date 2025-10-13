@@ -119,12 +119,12 @@ function variantStockMap_(){
   }
   var ventas = sheetByName_('Ventas')
   if (ventas){
-    var vrows = ventas.getRange(2,1,Math.max(0,ventas.getLastRow()-1),15).getValues()
+    var vrows = ventas.getRange(2,1,Math.max(0,ventas.getLastRow()-1),14).getValues()
     for (var j=0;j<vrows.length;j++){
       var v = vrows[j]
-      var vcode = String(v[4]||'').trim(); if (!vcode) continue
-      var vcolor = String(v[6]||'').trim(); var vsize = String(v[7]||'').trim()
-      var vqty = toNum_(v[8]||0)
+      var vcode = String(v[3]||'').trim(); if (!vcode) continue
+      var vcolor = String(v[5]||'').trim(); var vsize = String(v[6]||'').trim()
+      var vqty = toNum_(v[7]||0)
       var vk = vcode+'|'+vcolor+'|'+vsize
       out[vk] = (out[vk]||0) - vqty
     }
@@ -169,46 +169,35 @@ function searchProducts_(q){
 }
 
 // Register a sale ticket, update Productos stock and append lines to "Ventas"
-function saleTicket_(data){
-  var s = ensureSheet_('Ventas', ['Fecha','Ticket','ClienteNombre','ClienteID','Codigo','Producto','Color','Talla','Cantidad','PrecioUnitario','Desc%','PrecioOverride','TotalLinea','Credito','Vencimiento'])
-  var now = new Date()
-  var ticket = 'T'+now.getFullYear()+('0'+(now.getMonth()+1)).slice(-2)+('0'+now.getDate()).slice(-2)+'-'+now.getTime()
-  var customerName = String(data.customerName||'')
-  var customerId = String(data.customerId||'')
-  var items = data.items||[]
-  var credit = !!data.credit
-  var dueDate = data.dueDate ? new Date(data.dueDate) : ''
-  var rows = []
-  var subtotal = 0
-  for (var i=0;i<items.length;i++){
-    var it = items[i]||{}
-    var code = String(it.code||''); if (!code) continue
-    var name = String(it.name||code)
-    var qty = toNum_(it.qty||1)
-    var unit = toNum_(it.unitPrice||0)
-    var discountPct = toNum_(it.discountPct||0)
-    var priceOverride = (it.priceOverride!==undefined && it.priceOverride!=='') ? toNum_(it.priceOverride) : null
-    var finalUnit = priceOverride!=null ? priceOverride : (unit * (1 - discountPct/100))
-    var lineTotal = finalUnit * qty
-    subtotal += lineTotal
-    rows.push([ now, ticket, customerName, customerId, code, name, String(it.color||''), String(it.size||''), qty, unit, discountPct, priceOverride, lineTotal, credit?1:0, dueDate ])
-    try{ applySaleToStock_(code, qty) }catch(e){ /* stock write-back best effort */ }
-  }
-  if (rows.length) s.getRange(s.getLastRow()+1,1,rows.length,rows[0].length).setValues(rows)
-  var discountMode = String(data.discountMode||'percent')
-  var discountValue = toNum_(data.discountValue||0)
-  var discountTotalValue = 0
-  var discountTotalPct = 0
-  if (discountMode === 'value'){
-    discountTotalValue = Math.min(subtotal, Math.max(0, discountValue))
-    discountTotalPct = subtotal ? (discountTotalValue / subtotal) * 100 : 0
-  } else {
-    discountTotalPct = Math.max(0, discountValue)
-    discountTotalValue = subtotal * (discountTotalPct/100)
-  }
-  var total = Math.max(0, subtotal - discountTotalValue)
-  return { ok:true, ticket, subtotal, discountTotalPct, discountTotalValue, total }
-}
+// function saleTicket_(data){
+//   var s = ensureSheet_('Ventas', ['Fecha','Ticket','Cliente','Codigo','Producto','Color','Talla','Cantidad','PrecioUnitario','Desc%','PrecioOverride','TotalLinea','Credito','Vencimiento'])
+//   var now = new Date()
+//   var ticket = 'T'+now.getFullYear()+('0'+(now.getMonth()+1)).slice(-2)+('0'+now.getDate()).slice(-2)+'-'+now.getTime()
+//   var customer = String(data.customer||'')
+//   var items = data.items||[]
+//   var credit = !!data.credit
+//   var dueDate = data.dueDate ? new Date(data.dueDate) : ''
+//   var rows = []
+//   var subtotal = 0
+//   for (var i=0;i<items.length;i++){
+//     var it = items[i]||{}
+//     var code = String(it.code||''); if (!code) continue
+//     var name = String(it.name||code)
+//     var qty = toNum_(it.qty||1)
+//     var unit = toNum_(it.unitPrice||0)
+//     var discountPct = toNum_(it.discountPct||0)
+//     var priceOverride = (it.priceOverride!==undefined && it.priceOverride!=='') ? toNum_(it.priceOverride) : null
+//     var finalUnit = priceOverride!=null ? priceOverride : (unit * (1 - discountPct/100))
+//     var lineTotal = finalUnit * qty
+//     subtotal += lineTotal
+//     rows.push([ now, ticket, customer, code, name, String(it.color||''), String(it.size||''), qty, unit, discountPct, priceOverride, lineTotal, credit?1:0, dueDate ])
+//     try{ applySaleToStock_(code, qty) }catch(e){ /* stock write-back best effort */ }
+//   }
+//   if (rows.length) s.getRange(s.getLastRow()+1,1,rows.length,rows[0].length).setValues(rows)
+//   var discountTotalPct = toNum_(data.discountTotalPct||0)
+//   var total = subtotal * (1 - discountTotalPct/100)
+//   return { ok:true, ticket, subtotal, discountTotalPct, total }
+// }
 
 // === Web App ===
 function doGet(e){
@@ -218,7 +207,7 @@ function doGet(e){
   if (a==='dashboard') return ok_(_getDashboard())
   if (a==='payments') return ok_(_listPayments(e.parameter.scope))
   if (a==='expensetypes') return ok_(_listExpenseTypes())
-  if (a==='variants') return ok_(listVariantsForCode_(e.parameter.code))
+  if (a==='variants') return ok_(listVariantsAvailable_(e.parameter.code))
   if (a==='search') return ok_(searchProducts_(e.parameter.q||''))
   return bad_('unknown action')
 }
@@ -230,4 +219,134 @@ function doPost(e){
   if (a==='uploadpdf') return ok_(uploadPurchasePDF(data))
   if (a==='sale') return ok_(saleTicket_(data))
   return bad_('unknown action')
+}
+
+
+// Build variant-level availability from Compras - Ventas.
+// Sheets layout assumed:
+// Compras: ... [ D=Qty, I=Codigo, J=Color, K=Talla ]
+// Ventas:  ... [ E=Codigo, G=Color, H=Talla, I=Qty ]
+function listVariantsAvailable_(){
+  const cSh = SpreadsheetApp.getActive().getSheetByName('Compras');
+  const vSh = SpreadsheetApp.getActive().getSheetByName('Ventas');
+  const pSh = SpreadsheetApp.getActive().getSheetByName('Productos');
+  const map = {}; // key 'code|color|size' -> { code, name, color, size, purchased, sold }
+
+  if (cSh && cSh.getLastRow()>1){
+    const rows = cSh.getRange(2,1,cSh.getLastRow()-1,12).getValues();
+    rows.forEach(r=>{
+      const code = String(r[8]||'').trim(); if(!code) return;
+      const name = String(r[2]||'').trim();
+      const color = String(r[9]||'').trim();
+      const size  = String(r[10]||'').trim();
+      const qty   = Number(r[3]||0);
+      const k = [code,color,size].join('|');
+      const v = map[k] || { code, name, color, size, purchased:0, sold:0 };
+      v.purchased += qty;
+      map[k]=v;
+    });
+  }
+
+  if (vSh && vSh.getLastRow()>1){
+    // Ventas header esperada: [Fecha,Ticket,ClienteNombre,ClienteId,Codigo,Producto,Color,Talla,Cantidad,...]
+    const rows = vSh.getRange(2,1,vSh.getLastRow()-1,12).getValues();
+    rows.forEach(r=>{
+      const code = String(r[4]||'').trim(); if(!code) return;
+      const name = String(r[5]||'').trim();
+      const color= String(r[6]||'').trim();
+      const size = String(r[7]||'').trim();
+      const qty  = Number(r[8]||0);
+      const k = [code,color,size].join('|');
+      const v = map[k] || { code, name, color, size, purchased:0, sold:0 };
+      v.sold += qty;
+      map[k]=v;
+    });
+  }
+
+  // precios base desde Productos (C=PrecioVenta, F=CostoPromedio, I=Markup%, J=PrecioSugerido)
+  const priceByCode = {};
+  if (pSh && pSh.getLastRow()>1){
+    const rows = pSh.getRange(2,1,pSh.getLastRow()-1,10).getValues();
+    rows.forEach(r=>{
+      const code = String(r[0]||'').trim();
+      priceByCode[code] = Number(r[2]||r[9]||0);
+    });
+  }
+
+  const out = [];
+  Object.keys(map).forEach(k=>{
+    const v = map[k];
+    const stock = (v.purchased||0) - (v.sold||0);
+    if (stock<=0) return; // mostrar sólo variantes con stock positivo
+    out.push({
+      code: v.code,
+      name: v.name || v.code,
+      color: v.color,
+      size:  v.size,
+      stock: stock,
+      defaultPrice: priceByCode[v.code]||0
+    });
+  });
+
+  // orden: por código, luego talla, luego color
+  out.sort((a,b)=> (a.code===b.code)
+    ? (String(a.size).localeCompare(String(b.size)) || String(a.color).localeCompare(String(b.color)))
+    : String(a.code).localeCompare(String(b.code)));
+
+  return { ok:true, items: out };
+}
+
+
+// Register sale ticket and reduce product-level stock (Productos!E).
+// Expected payload:
+// { action:'sale', customer:{ name, id }, discountTotal?:number, dueDate?:'YYYY-MM-DD',
+//   items:[ { code, name, color, size, qty, price } ] }
+function saleTicket_(data){
+  const cust = data.customer||{};
+  const cname = String(cust.name||'').trim();
+  const cid   = String(cust.id||'').trim();
+  if (!cname || !cid) return { ok:false, error:'customer name and id required' };
+
+  const items = data.items||[];
+  if (!items.length) return { ok:false, error:'empty items' };
+
+  const sh = ensureSheet_('Ventas',
+    ['Fecha','TicketId','ClienteNombre','ClienteId','ProductoCodigo','Producto','Color','Talla','Cantidad','PrecioUnit','Subtotal','DescuentoTotal','Total','PagoTipo','Vencimiento']);
+  const now = new Date();
+  const ticketId = 'T-' + Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyyMMddHHmmss-') + Math.floor(Math.random()*1000);
+
+  const discount = Number(data.discountTotal||0);
+  const dueDate  = String(data.dueDate||'').trim(); // vacío = contado
+  const payType  = dueDate ? 'credito' : 'contado';
+
+  let subtotal = 0;
+  const rows = [];
+  items.forEach(it=>{
+    const code = String(it.code||'').trim(); if (!code) return;
+    const name = String(it.name||code);
+    const color= String(it.color||'');
+    const size = String(it.size||'');
+    const qty  = Number(it.qty||0);
+    const pu   = Number(it.price||0);
+    const sub  = pu * qty;
+    subtotal += sub;
+    rows.push([now, ticketId, cname, cid, code, name, color, size, qty, pu, sub, discount, '', payType, dueDate]);
+  });
+
+  const total = subtotal - discount;
+  // completar columna "Total" por visibilidad
+  rows.forEach(r=> r[12]= total);
+
+  if (rows.length) sh.getRange(sh.getLastRow()+1,1,rows.length,rows[0].length).setValues(rows);
+
+  // reduce stock por producto (agregado)
+  try{ items.forEach(it=> applySaleToStock_(String(it.code), Number(it.qty||0))); }catch(e){}
+
+  // si es contado, registrar cobro
+  if (!dueDate){
+    const cob = ensureSheet_('Cobros', ['Fecha','TicketId','Cliente','Monto','Nota']);
+    cob.appendRow([ now, ticketId, cname, total, 'auto' ]);
+  }
+
+  return { ok:true, ticketId, total, lines: items.length };
 }

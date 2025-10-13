@@ -16,15 +16,25 @@ npm run dev
 
 
 ```
-Requerido y no negociable 
-1- siempre prefiero que empaques todo el proyecto completo, sin node_modules o cualquier cosa que no sea el source code, siempre el source code entero, otra cosa referente al mismo punto, hay veces que al final no me envías el source code zipeado y me volves a preguntar si quiero el zip del source code, y la respuesta es sí, y siempre a cada interacción y también añade apps-scripts siempre, para evitar problemas de link inválidos o expirados con nombres iguales has que ante de la extension .zip tenga el datetime en millisegundos, por ejemplo "ventas-....-v13.1-1759965006744.zip".
-2- no puedes remover una feature entre una version anterior y la otra a no ser que yo lo solicite explicitamente, simplemente enfocate en resolver o agregar y jamás remover algo que sí estaba en mis requisitos.
-3- Si algo ya estaba funcionando no me sugieras algo que a parte de que no corrija el error que te estoy pasando también afecté a lo que ya estaba funcionando. 
-4- Comentarios dentro del source code siempre en English pero en el chat depende de que idioma estoy usando para comunicarme contigo. 
-5- Has siempre pruebas para corroborar lo que estas sugiriendo para evitar idas y vueltas innecesarias.
-6- Para que no tengas duda te adjunto el source code resumido en el file `combined.txt`.
+Requisitos (no negociables)
+1. Entrega del código
+En cada interacción, envía todo el source code completo en un .zip (sin node_modules ni archivos que no sean código) e incluye siempre apps-scripts.
+No preguntes si quiero el zip: envíalo siempre.
+Para evitar conflictos de nombre/links, el archivo debe terminar con timestamp en milisegundos antes de .zip (ej.: ventas-...-v13.1-1759965006744.zip).
+2. No remover features
+Nunca elimines una feature que ya existía a menos que yo lo pida explícitamente. Enfócate en corregir o agregar, no en quitar.
+3. Estabilidad y no regresiones
+Si algo ya funcionaba, no propongas cambios que no solucionen el problema y además rompan lo existente.
+Aplica cambios mínimos y focalizados, evitando reescrituras/refactors innecesarios de una interacción a otra.
+Si hay funciones nuevas poner las mimsas en la parte inferior del file a modificar, de esta forma es más fácil entender lo nuevo de lo que ya existía y permanece igual y de lo que existía y sufrió un cambio.
+4. Pruebas obligatorias
+Siempre incluye tests que validen lo que propones y comprueben que no hay regresiones.
+5. Idioma
+Comentarios en el código siempre en English.
+En el chat, usa el idioma en el que te escribo.
+6. Referencia base
+Toma combined.txt como resumen/base del source para evitar dudas.
 ```
-La verdad estoy es critico, no puedes cambiar el código a cada interacción que tengamos.
 
 
 
@@ -34,6 +44,8 @@ La verdad estoy es critico, no puedes cambiar el código a cada interacción que
 find . -type f \
   -not -path "*/node_modules/*" \
   -not -path "*/temp/*" \
+  -not -path "*/dist/*" \
+  -not -path "*/bkp/*" \
   -not -path "*/.git/*" \
   -not -path "*/__pycache__/*" \
   -not -name "*.txt" \
