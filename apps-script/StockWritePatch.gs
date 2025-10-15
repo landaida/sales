@@ -13,7 +13,7 @@ function toNumBR_(v){
 }
 
 // Get sheet safely
-function sh_(name){ return SpreadsheetApp.getActive().getSheetByName(name); }
+// function sh_(name){ return SpreadsheetApp.getActive().getSheetByName(name); }
 
 // Find product row by code; returns 0 if not found
 function findProductRow_(code){

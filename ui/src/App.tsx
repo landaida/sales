@@ -4,6 +4,7 @@ import StockView from './components/StockView'
 import PaymentsHistory from './components/PaymentsHistory'
 import ExpensesView from './components/ExpensesView'
 import PurchaseOCRUpload from './components/PurchaseOCRUpload'
+import PurchaseHistory from './components/PurchaseHistory'
 import DashboardView from './components/DashboardView'
 
 export default function App(){
@@ -18,14 +19,15 @@ export default function App(){
       <h1>Sistema de Ventas Simple</h1>
       <nav style={{marginBottom:12}}>
         {link('#venta','Venta')}{link('#stock','Stock')}{link('#cobros','Cobros')}
-        {link('#gastos','Gastos')}{link('#importarpdf','Importar PDF')}{link('#historial','Historial')}{link('#dashboard','Dashboard')}
+        {link('#gastos','Gastos')}{link('#importarpdf','Importar PDF')}{link('#PaymentsHistory','Historial de Pagos')}{link('#PurchaseHistory','Historial de Compras')}{link('#dashboard','Dashboard')}
       </nav>
       {route==='#venta' && <SaleTicket />}
       {route==='#stock' && <StockView />}
       {route==='#cobros' && <PaymentsHistory scope="due" />}
       {route==='#gastos' && <ExpensesView />}
       {route==='#importarpdf' && <PurchaseOCRUpload />}
-      {route==='#historial' && <PaymentsHistory />}
+      {route==='#PaymentsHistory' && <PaymentsHistory />}
+      {route==='#PurchaseHistory' && <PurchaseHistory />}
       {route==='#dashboard' && <DashboardView />}
     </main>
   )

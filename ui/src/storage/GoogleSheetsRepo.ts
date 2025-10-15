@@ -14,7 +14,8 @@ export interface IRepository {
   saleTicket(payload:any): Promise<any>
 }
 
-const base = import.meta.env.VITE_API_BASE || ''
+// const base = import.meta.env.VITE_API_BASE || ''
+const base = (import.meta as any).env.VITE_API_BASE || '/gsapi';
 const API = (path:string)=> {
   // allow full URL or relative path
   const q = path.startsWith('http') ? path : (base + (base.includes('?') ? '&' : (base.endsWith('/exec')?'?':'/exec?')) + path)
@@ -48,6 +49,7 @@ export class GoogleSheetsRepo implements IRepository {
   async listVariants(): Promise<{ ok: boolean; items: VariantItem[] }> {
     return jget(`action=variants`);
   }
+  async searchClients(q:string): Promise<{ ok:boolean; items:{name:string;id:string}[] }>{ return jget('action=clients&q='+encodeURIComponent(q)); }
   async submitSale(payload: {
     customer: { name: string; id: string };
     discountTotal?: number;
@@ -55,5 +57,21 @@ export class GoogleSheetsRepo implements IRepository {
     items: SaleItem[];
   }): Promise<{ ok: boolean; ticketId: string; total: number }> {
     return jpost({ action:'sale', ...payload });
+  }
+  async listStockFast(): Promise<{ ok:boolean; items: any[] }>{
+    return jget('action=stockfast');
+  }
+  // Purchase review
+  async purchaseParse(payload:{ filename:string; b64:string; supplier?:string }){
+    return jpost({ action:'purchase_parse', ...payload });
+  }
+  async purchaseSave(payload:any){
+    return jpost({ action:'purchase_save', ...payload });
+  }
+  async purchaseHistory(cursor=0, limit=5){
+    return jget(`action=purchase_history&cursor=${cursor}&limit=${limit}`);
+  }
+  async purchaseDetails(factura:string){
+    return jget(`action=purchase_details&factura=${encodeURIComponent(factura)}`);
   }
 }

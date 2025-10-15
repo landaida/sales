@@ -16,24 +16,49 @@ npm run dev
 
 
 ```
-Requisitos (no negociables)
-1. Entrega del código
-En cada interacción, envía todo el source code completo en un .zip (sin node_modules ni archivos que no sean código) e incluye siempre apps-scripts.
-No preguntes si quiero el zip: envíalo siempre.
-Para evitar conflictos de nombre/links, el archivo debe terminar con timestamp en milisegundos antes de .zip (ej.: ventas-...-v13.1-1759965006744.zip).
-2. No remover features
-Nunca elimines una feature que ya existía a menos que yo lo pida explícitamente. Enfócate en corregir o agregar, no en quitar.
-3. Estabilidad y no regresiones
-Si algo ya funcionaba, no propongas cambios que no solucionen el problema y además rompan lo existente.
-Aplica cambios mínimos y focalizados, evitando reescrituras/refactors innecesarios de una interacción a otra.
-Si hay funciones nuevas poner las mimsas en la parte inferior del file a modificar, de esta forma es más fácil entender lo nuevo de lo que ya existía y permanece igual y de lo que existía y sufrió un cambio.
-4. Pruebas obligatorias
-Siempre incluye tests que validen lo que propones y comprueben que no hay regresiones.
-5. Idioma
-Comentarios en el código siempre en English.
-En el chat, usa el idioma en el que te escribo.
-6. Referencia base
-Toma combined.txt como resumen/base del source para evitar dudas.
+**Requisitos (no negociables) — actualizado**
+
+1. **Entrega del código**
+
+* En **cada interacción**, envía **todo el source code completo** en un **.zip** (sin `node_modules` ni archivos que no sean código) e **incluye siempre `apps-scripts`**.
+* **No preguntes** si quiero el zip: **envíalo siempre**.
+* El archivo debe terminar con **timestamp en milisegundos** antes de `.zip` (ej.: `ventas-...-v13.1-1759965006744.zip`), asegurate que no ocurran errores frecuentes con el zip como `Code interpreter session expired` y otros, hay veces que me pasas solo texto y no es un link.
+* Me gustaría que muestres el nuevo código sugerido, en qué archivo ponerlo o dónde editar, muestra el código detalladamente.
+2. **No remover features**
+
+* **No elimines** una feature existente salvo que yo lo pida explícitamente. Enfócate en **corregir o agregar**, no en quitar.
+
+3. **Estabilidad y no regresiones**
+
+* Si algo ya funcionaba, **no propongas cambios** que no solucionen el problema y además rompan lo existente.
+* Cambios **mínimos y focalizados**; evita refactors o reescrituras innecesarias entre versiones.
+
+4. **Pruebas obligatorias**
+
+* **Siempre** incluye **tests** que validen lo nuevo y que **prevengan regresiones**.
+
+5. **Idioma**
+
+* **Comentarios en el código**: siempre en **English**.
+* **Chat**: en el **idioma en el que te escribo**.
+
+6. **Referencia base**
+
+* Usa **`combined.txt`** como **resumen/base** del source para evitar dudas.
+
+7. **Consistencia de nombres y contratos (API stability)**
+
+* **No renombres** funciones ni helpers ya entregados ni cambies sus firmas (parámetros/orden/retorno) **sin necesidad estricta**.
+* **No alteres la funcionalidad** si no es imprescindible para el fix solicitado.
+* Mantén **nombres estables** en helpers (ej.: usa siempre `sheetByName_`, **no** alternes con `sh_`).
+* Si un cambio es inevitable:
+  a) **Justifica** el motivo en el chat,
+  b) provee **alias/compatibilidad** temporal (wrapper) manteniendo el nombre previo,
+  c) marca el anterior como **deprecated** en comentarios (en English),
+  d) agrega **tests de compatibilidad** (mismo input → mismo output/efecto).
+* **Minimiza el diff** (nada de renombrar variables/funciones por estilo si no se pidió).
+* **Minimiza el diff** (no mover la function de lugar en el archivo o en archivos diferentes, estás moviendo siempre functions de archivos especificos como StockWritePatch.gs a Code.gs, lo hiciste varias veces con `applySaleToStock_`).
+* ***Obviamente que siempre prefiero nombres como `sheetByName_`, `ensureProductRow_` y sin la necesidad que todos esten en `Code.gs`, podrian estar en otras clases helpers.
 ```
 
 
@@ -45,6 +70,8 @@ find . -type f \
   -not -path "*/node_modules/*" \
   -not -path "*/temp/*" \
   -not -path "*/dist/*" \
+  -not -path "*/.github/*" \
+  -not -path "*/.vscode/*" \
   -not -path "*/bkp/*" \
   -not -path "*/.git/*" \
   -not -path "*/__pycache__/*" \
@@ -52,6 +79,14 @@ find . -type f \
   -not -name "package-lock.json" \
   -not -name "*.tar.gz" \
   -not -name "*.zip" \
+  -not -name "*.npmrc" \
+  -not -name "*.gitignore" \
+  -not -name "*package.json" \
+  -not -name "*LICENSE" \
+  -not -name "*deploy.sh" \
+  -not -name "*.env*" \
+  -not -name "*vite.config.ts" \
+  -not -name "*tsconfig.json" \
   -not -name "*.xlsx" \
   -not -name "*example*" \
   -not -name "*.pt" \

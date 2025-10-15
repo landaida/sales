@@ -3,66 +3,34 @@
 // Saves the PDF temporarily in Drive, converts to Google Doc to extract OCR text,
 // detects supplier, parses items and writes into "Compras" sheet.
 
+// Do NOT write to sheets during parsing. Only return items + file ids/urls.
 function uploadPurchasePDF(payload){
-  let debug = [];
-  //debug.push(`payload:${JSON.stringify(payload)}`)
-
-  if (!payload || !payload.b64) throw 'Falta archivo b64'
-  const cfg = cfg_() || {}
-  const byte = Utilities.base64Decode(payload.b64)
-  const blob = Utilities.newBlob(byte, 'application/pdf', payload.filename || 'compra.pdf')
-
-  // Save PDF to Drive
-  let pdfId = DriveApp.createFile(blob).getId()
+  if (!payload || !payload.b64) throw 'Falta archivo b64';
+  const byte = Utilities.base64Decode(payload.b64);
+  const blob = Utilities.newBlob(byte, 'application/pdf', payload.filename || 'compra.pdf');
+  const pdfId = DriveApp.createFile(blob).getId();
   try{
-    // Convert to Google Doc with OCR (Drive v2)
-    const docMeta = { title: (payload.filename||'compra') + ' (OCR)', mimeType: 'application/vnd.google-apps.document' }
-    if (typeof Drive === 'undefined' || !Drive.Files) throw 'Activa Drive API (servicio avanzado) en Apps Script'
-    const doc = Drive.Files.copy(docMeta, pdfId, { ocr:true, ocrLanguage:'pt' })
-    const docId = doc.id
-    const text = DocumentApp.openById(docId).getBody().getText()
+    const meta = { title: (payload.filename||'compra')+' (OCR)', mimeType:'application/vnd.google-apps.document' };
+    if (!Drive || !Drive.Files) throw 'Activa Drive API (servicio avanzado)';
+    const doc = Drive.Files.copy(meta, pdfId, { ocr:true, ocrLanguage:'pt' });
+    const text = DocumentApp.openById(doc.id).getBody().getText();
+    try{ DriveApp.getFileById(doc.id).setTrashed(true) }catch(e){}
 
     // Detect supplier
-    let supplier = (payload.supplier || '').toUpperCase()
-    if (!payload.supplier){
-      if (text.includes('OXYRIO CONFECÇOES') || text.includes('OXYRIO CONFECCOES')) supplier = 'OXYRIO CONFECCOES LTDA'
-      else if (text.includes('GABY MODAS')) supplier = 'GABY MODAS'
-      else supplier = 'VITALLY'
+    var supplier = (payload.supplier||'').toUpperCase();
+    if (!supplier){
+      if (text.indexOf('OXYRIO CONFECCOES')>=0 || text.indexOf('OXYRIO CONFECÇOES')>=0) supplier='OXYRIO CONFECCOES LTDA';
+      else if (text.indexOf('GABY MODAS')>=0) supplier='GABY MODAS';
+      else supplier='VITALLY';
     }
 
-    debug.push(`supplier:${supplier}`)
+    var items = [];
+    if (supplier==='OXYRIO CONFECCOES LTDA') items = parseOXYRIO_(text, (payload.preferPrice||'AV'));
 
-    // Parse OXYRIO format lines: code name qty priceAv pricePz ... barcode color size ...
-    const prefer = (payload.preferPrice||'AV').toUpperCase() // AV o PZ
-    let items = []
-
-    if (supplier === 'OXYRIO CONFECCOES LTDA'){
-      items = parseOXYRIO_(text, prefer)
-    } else if (supplier === 'GABY MODAS'){
-      items = [] // parser TBD
-    } else if (supplier === 'VITALLY'){
-      items = [] // parser TBD
-    }
-
-    // Write to "Compras" sheet
-    const s = sheetByName_('Compras') || ss_().insertSheet('Compras')
-    if (s.getLastRow()===0) s.appendRow(['Fecha','Proveedor','Producto','Cantidad','CostoUnitario','Total','Factura','Nota','Codigo','Color','Talla','CodigosBarras'])
-    const now = new Date()
-    debug.push(`length:${items.length}`)
-    debug.push("before insert rows on Compras sheet")
-    const rows = items.map(it=> [now, it.supplier, it.name, it.qty, it.costUnit, (it.qty*it.costUnit), it.factura||'', '', it.code, it.color, it.size, it.barcode])
-    debug.push("after insert rows on Compras sheet")
-
-    if (rows.length) s.getRange(s.getLastRow()+1,1,rows.length,rows[0].length).setValues(rows)
-
-    // Cleanup temp files
-    try{ DriveApp.getFileById(pdfId).setTrashed(true) }catch(e){}
-    try{ DriveApp.getFileById(docId).setTrashed(true) }catch(e){}
-
-    return { ok:true, supplier, imported: items.length, sample: payload.debug ? text : '', debug:debug.join('\n') }
+    return { ok:true, supplier, fileId: pdfId, fileUrl: 'https://drive.google.com/file/d/'+pdfId+'/view', items };
   }catch(e){
     try{ DriveApp.getFileById(pdfId).setTrashed(true) }catch(_){}
-    return { ok:false, error: String(e) }
+    return { ok:false, error:String(e) };
   }
 }
 
@@ -91,7 +59,7 @@ function parseOXYRIO_(raw, preferPrice){
     var costUnit = preferAV ? av : pz
     out.push({ code, name, qty, costUnit, barcode, color, size, ncm })
     // write-back to 'Productos'
-    try{ applyPurchaseToStock_(code, name, qty, costUnit) }catch(e){}
+    // try{ applyPurchaseToStock_(code, name, qty, costUnit) }catch(e){}
   }
   return out
 }

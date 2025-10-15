@@ -7,6 +7,10 @@ function bad_(msg){ return ok_({ ok:false, error: String(msg) }) }
 function ss_(){ return SpreadsheetApp.getActive() }
 function sheetByName_(name){ return ss_().getSheetByName(name) }
 
+/** @deprecated Use sheetByName_(name). Kept for backward-compat only. */
+function sh_(name){ return sheetByName_(name); }
+
+
 // Parse "Config" sheet to key/value object
 function cfg_(){
   try{
@@ -209,6 +213,11 @@ function doGet(e){
   if (a==='expensetypes') return ok_(_listExpenseTypes())
   if (a==='variants') return ok_(listVariantsAvailable_(e.parameter.code))
   if (a==='search') return ok_(searchProducts_(e.parameter.q||''))
+  if (a==='clients')  return ok_(searchClients_(String(e.parameter.q||'')));
+  // if (a==='stockfast') return ok_(listStockFromProductos_());
+  if (a==='stockfast')        return ok_(listStockFromProductos_());
+  if (a==='purchase_history') return listPurchaseHistory_(e.parameter.cursor||0, e.parameter.limit||5);
+  if (a==='purchase_details') return purchaseDetails_(String(e.parameter.factura||''));
   return bad_('unknown action')
 }
 
@@ -218,6 +227,8 @@ function doPost(e){
   if (a==='expense') return ok_(_addExpense(data))
   if (a==='uploadpdf') return ok_(uploadPurchasePDF(data))
   if (a==='sale') return ok_(saleTicket_(data))
+  if (a==='purchase_parse') return ok_(purchaseParse_(data));
+  if (a==='purchase_save')  return ok_(purchaseSave_(data));
   return bad_('unknown action')
 }
 
@@ -296,57 +307,377 @@ function listVariantsAvailable_(){
   return { ok:true, items: out };
 }
 
+function s_(v){ return v==null?'':String(v) }
 
 // Register sale ticket and reduce product-level stock (Productos!E).
 // Expected payload:
 // { action:'sale', customer:{ name, id }, discountTotal?:number, dueDate?:'YYYY-MM-DD',
 //   items:[ { code, name, color, size, qty, price } ] }
 function saleTicket_(data){
+  var dueDate = s_(data.dueDate||''); 
+  var payType = dueDate ? 'credito' : 'contado';
+  const now = new Date();
+  var ticketId = 'T-' + Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyyMMddHHmmss-') + Math.floor(Math.random()*1000);
   const cust = data.customer||{};
   const cname = String(cust.name||'').trim();
   const cid   = String(cust.id||'').trim();
   if (!cname || !cid) return { ok:false, error:'customer name and id required' };
-
+  upsertClient_(cname, cid);   // <-- agrega/actualiza en hoja Clientes
   const items = data.items||[];
   if (!items.length) return { ok:false, error:'empty items' };
 
-  const sh = ensureSheet_('Ventas',
-    ['Fecha','TicketId','ClienteNombre','ClienteId','ProductoCodigo','Producto','Color','Talla','Cantidad','PrecioUnit','Subtotal','DescuentoTotal','Total','PagoTipo','Vencimiento']);
-  const now = new Date();
-  const ticketId = 'T-' + Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyyMMddHHmmss-') + Math.floor(Math.random()*1000);
+  const sh = ensureSheet_('Ventas', [
+  'Fecha','Cliente','Producto','Cantidad','PrecioUnitario','Total','ImportePagado','Saldo','Estado',
+  'CostoUnitario','CostoTotal','Utilidad','FacturaID','PrecioBase','PrecioOverride','DescLinea%','DescLinea$',
+  'Rol','Codigo','Color','Talla','Vencimiento'
+]);
+const filas = []; let subtotal = 0;
+items.forEach(it=>{
+  const code = String(it.code||'').trim(); if(!code) return;
+  const name = String(it.name||code);
+  const color= String(it.color||'');
+  const size = String(it.size||'');
+  const qty  = Number(it.qty||0);
+  const pu   = Number(it.price||0);
+  const line = pu * qty; subtotal += line;
+  filas.push([
+    now,                       // Fecha
+    cname,                     // Cliente (Nombre)
+    name,                      // Producto
+    qty, pu, line,             // Cantidad, PrecioUnitario, Total
+    '', '', payType,         // ImportePagado, Saldo, Estado (ajustable)
+    '', '', '',                // CostoUnitario, CostoTotal, Utilidad
+    ticketId,                  // FacturaID (usamos ticket)
+    pu, '', '', '',            // PrecioBase, PrecioOverride, DescLinea%, DescLinea$
+    'venta',                   // Rol
+    code, color, size,         // Codigo, Color, Talla
+    dueDate                    // Vencimiento ('' si contado)
+  ]);
+});
 
-  const discount = Number(data.discountTotal||0);
-  const dueDate  = String(data.dueDate||'').trim(); // vacío = contado
-  const payType  = dueDate ? 'credito' : 'contado';
+  const total = subtotal - Number(data.discountTotal||0);
+  // si es contado, registrar cobro por 'total'
 
-  let subtotal = 0;
-  const rows = [];
-  items.forEach(it=>{
-    const code = String(it.code||'').trim(); if (!code) return;
-    const name = String(it.name||code);
-    const color= String(it.color||'');
-    const size = String(it.size||'');
-    const qty  = Number(it.qty||0);
-    const pu   = Number(it.price||0);
-    const sub  = pu * qty;
-    subtotal += sub;
-    rows.push([now, ticketId, cname, cid, code, name, color, size, qty, pu, sub, discount, '', payType, dueDate]);
-  });
+  if (total <= 0) return { ok:false, error:'total must be > 0' };
 
-  const total = subtotal - discount;
   // completar columna "Total" por visibilidad
-  rows.forEach(r=> r[12]= total);
+  filas.forEach(r=> r[12]= total);
 
-  if (rows.length) sh.getRange(sh.getLastRow()+1,1,rows.length,rows[0].length).setValues(rows);
+  if (filas.length) sh.getRange(sh.getLastRow()+1,1,filas.length,filas[0].length).setValues(filas);
 
   // reduce stock por producto (agregado)
   try{ items.forEach(it=> applySaleToStock_(String(it.code), Number(it.qty||0))); }catch(e){}
 
   // si es contado, registrar cobro
   if (!dueDate){
-    const cob = ensureSheet_('Cobros', ['Fecha','TicketId','Cliente','Monto','Nota']);
+    const cob = ensureSheet_('Cobros',['Fecha','TicketId','Cliente','Monto','Nota']);
     cob.appendRow([ now, ticketId, cname, total, 'auto' ]);
   }
 
+  // --- BEGIN: credit plan generation (installments) ---
+  var isPlazo   = String(data.paymentMode||'').toLowerCase()==='plazo' || Number(data.numCuotas||0)>0;
+  var numCuotas = Math.max(0, Number(data.numCuotas||0));
+  var creditKind= String(data.creditKind||'mensual').toLowerCase(); // mensual|semanal
+
+  // Para contado: cobro automático (ya lo tenías arriba).
+  // Para plazo: NO cobro automático; generar plan en 'ACobrar'
+  if (isPlazo && numCuotas>0){
+    generateInstallments_(ticketId, cname, total, creditKind, numCuotas, now);
+  }
+  // --- END: credit plan generation ---
+
+
   return { ok:true, ticketId, total, lines: items.length };
+}
+
+
+/** Clients sheet helper (keeps only name + id for now). */
+function ensureClients_(){ return ensureSheet_('Clientes',['Nombre','Id','Telefono','Direccion','Nota']); }
+
+/** Search clients by name or id (contains; supports AND by spaces). */
+function searchClients_(q){
+  q = String(q||'').trim().toUpperCase();
+  var sh = ensureClients_(), out=[];
+  if (sh.getLastRow()>1){
+    var rows = sh.getRange(2,1,sh.getLastRow()-1,2).getValues();
+    var terms = q ? q.split(/\s+/).filter(Boolean) : [];
+    rows.forEach(function(r){
+      var name = String(r[0]||''), id = String(r[1]||'');
+      var H = (name+' '+id).toUpperCase();
+      var ok = !terms.length || terms.every(t=> H.indexOf(t)>=0);
+      if (ok) out.push({ name, id });
+    });
+  }
+  return { ok:true, items: out };
+}
+
+/** Upsert client by name/id (update if same id or same name exists). */
+function upsertClient_(name,id){
+  var sh = ensureClients_();
+  var nameU = String(name||'').trim().toUpperCase();
+  var idU   = String(id||'').trim().toUpperCase();
+  if (sh.getLastRow()>1){
+    var rows = sh.getRange(2,1,sh.getLastRow()-1,2).getValues();
+    for (var i=0;i<rows.length;i++){
+      var r = rows[i], n=String(r[0]||'').toUpperCase(), d=String(r[1]||'').toUpperCase();
+      if (d===idU || n===nameU){
+        sh.getRange(i+2,1,1,2).setValues([[name,id]]);
+        return i+2;
+      }
+    }
+  }
+  sh.appendRow([name,id,'','','']);
+  return sh.getLastRow();
+}
+
+/** List variants using product-level stock only (Productos!E).
+ *  This returns one row per code (no color/size granularity) and is meant for performance in the button grid. */
+// function listStockFromProductos_(){
+//   var sh = sheetByName_('Productos');
+//   var out=[];
+//   if (sh && sh.getLastRow()>1){
+//     var rows = sh.getRange(2,1,Math.max(0,sh.getLastRow()-1),10).getValues(); // A..J
+//     rows.forEach(function(r){
+//       var code = String(r[0]||'').trim();
+//       if (!code) return;
+//       out.push({
+//         code: code,
+//         name: String(r[1]||code),
+//         stock: Number(r[4]||0),
+//         defaultPrice: Number(r[2]||r[9]||0) // C=PrecioVenta, J=PrecioSugerido
+//       });
+//     });
+//   }
+//   return { ok:true, items: out };
+// }
+
+
+/** Ensure 'ACobrar' sheet with this header. */
+function ensureACobrar_(){
+  return ensureSheet_('ACobrar', [
+    'TicketId','Cliente','CuotaN','FechaCuota','MontoCuota','Estado','Nota'
+  ]);
+}
+
+/** Generate installment plan rows (not paid yet).
+ *  kind: 'mensual'|'semanal'; n: number of installments; startDate: new Date(); total: number */
+function generateInstallments_(ticketId, clientName, total, kind, n, startDate){
+  var sh = ensureACobrar_();
+  var per = n>0 ? (total/n) : 0;
+  for (var i=1;i<=n;i++){
+    var d = new Date(startDate);
+    if (String(kind).toLowerCase()==='semanal'){
+      d.setDate(d.getDate() + i*7);
+    } else {
+      d.setMonth(d.getMonth() + i); // mensual por defecto
+    }
+    sh.appendRow([ ticketId, clientName, i, d, per, 'pendiente', '' ]);
+  }
+}
+
+
+
+/** Save base64 PDF to Drive and return { fileId, url } */
+function savePdfToDrive_(b64, filename){
+  var blob = Utilities.newBlob(Utilities.base64Decode(b64), 'application/pdf', filename||'compra.pdf');
+  var file = DriveApp.createFile(blob);
+  return { fileId: file.getId(), url: 'https://drive.google.com/file/d/'+file.getId()+'/view' };
+}
+
+/** OCR to plain text using Advanced Drive Service (enable Drive API advanced). */
+function ocrTextFromPdfFile_(fileId){
+  if (!Drive || !Drive.Files) throw new Error('Enable Advanced Drive API (Services > Drive API)');
+  var meta = { title: 'ocr-'+fileId, mimeType:'application/vnd.google-apps.document' };
+  var gdoc = Drive.Files.copy(meta, fileId, { ocr:true, ocrLanguage:'pt' });
+  var text = DocumentApp.openById(gdoc.id).getBody().getText();
+  try{ DriveApp.getFileById(gdoc.id).setTrashed(true); }catch(_){}
+  return text || '';
+}
+
+/** Parse purchase without saving: returns editable draft lines. */
+function purchaseParse_(data){
+  var saved = savePdfToDrive_(data.b64, data.filename||'compra.pdf');
+  var raw   = ocrTextFromPdfFile_(saved.fileId);
+  var H     = raw.toUpperCase();
+
+  // detect supplier only if not provided
+  var supplier = String(data.supplier||'').toUpperCase();
+  if (!supplier){
+    if (H.indexOf('OXYRIO CONFECCOES')>=0) supplier='OXYRIO CONFECCOES LTDA';
+    else if (H.indexOf('VITALLY')>=0)      supplier='VITALLY';
+    else if (H.indexOf('GABY MODAS')>=0)   supplier='GABY MODAS';
+    else supplier='UNKNOWN';
+  }
+
+  // call your proven vendor parser (e.g., parseOXYRIO_)
+  var items = [];
+  if (supplier==='OXYRIO CONFECCOES LTDA' && typeof parseOXYRIO_==='function') items = parseOXYRIO_(raw);
+
+  // normalize (unitCostRS=vendor currency, BRL)
+  items = (items||[]).map(function(it){
+    return {
+      code:String(it.code||''), name:String(it.name||''),
+      color:String(it.color||''), size:String(it.size||''),
+      barcode:String(it.barcode||''), qty:Number(it.qty||1),
+      // unitCostRS:Number(it.unitCost||0)
+      unitCostRS: Number(it.unitCost != null ? it.unitCost : (it.costUnit != null ? it.costUnit : 0))
+
+    };
+  });
+
+  return { ok:true, supplier:supplier, fileId:saved.fileId, fileUrl:saved.url, items:items, ocrSample:raw };
+}
+
+
+function purchaseSave_(data){
+  var sh = ensureSheet_('Compras', [
+    'Fecha','Proveedor','Producto','Cantidad','CostoUnitario','Total','Factura','Nota',
+    'Codigo','Color','Talla','CodigosBarras',
+    'CostoUnitarioRS','TotalRS','TCambio','PdfFileId'
+  ]);
+  var now   = new Date();
+  var rate  = Number(data.exchangeRate||1340);             // BRL → Gs
+  var fact  = String(data.invoice||data.filename||'');
+  var supp  = String(data.supplier||'');
+  var fileId= String(data.fileId||'');
+  var items = data.items||[];
+
+  var rows=[];
+  (items||[]).forEach(function(it){
+    var unitGs = Number(it.unitCostRS||0) * rate;
+    var totalGs= unitGs * Number(it.qty||0);
+    // var salePrice = Number(it.salePriceGs||0) > 0 ? Number(it.salePriceGs) : (2 * unitGs);
+    var salePrice = Number(it.salePriceGs||0) > 0 
+      ? Number(it.salePriceGs) 
+      : suggestPriceFromUnitRS_(it.unitCostRS, rate);
+    rows.push([
+      now, supp, String(it.name||''), Number(it.qty||0), unitGs, totalGs, fact, '',
+      String(it.code||''), String(it.color||''), String(it.size||''), String(it.barcode||''),
+      Number(it.unitCostRS||0), Number(it.unitCostRS||0)*Number(it.qty||0), rate, fileId
+    ]);
+    updateProductOnPurchase_(String(it.code||''), String(it.name||''), Number(it.qty||0), unitGs, String(it.color||''), String(it.size||''), salePrice);
+  });
+
+  if (rows.length) sh.getRange(sh.getLastRow()+1,1,rows.length,rows[0].length).setValues(rows);
+  return { ok:true, saved: rows.length };
+}
+
+/** Update product: stock += qty, avg cost, last cost, sale price (avg with prev). Also keep last color/size if columns exist. */
+// Add param salePriceGs
+function updateProductOnPurchase_(code, name, qty, unitCostGs, color, size, salePriceGs){
+  var s = sheetByName_('Productos'); if (!s) throw new Error('Productos missing');
+  var last = s.getLastRow(), row = -1;
+
+  if (last>1){
+    var idx = s.getRange(2,1,last-1,1).getValues();
+    for (var i=0;i<idx.length;i++){ if (String(idx[i][0])===String(code)){ row=i+2; break; } }
+  }
+  if (row<0){
+    row = s.getLastRow()+1;
+    // [A]Codigo,[B]Nombre,[C]PrecioVenta,[D]Unidad,[E]Stock,[F]CostoProm,[G]Activo,[H]UltimoCosto,[I]Markup%,[J]PrecioSugerido
+    s.getRange(row,1,1,10).setValues([[ String(code), name||code, 0, '', 0, 0, 1, unitCostGs, 0, 0 ]]);
+  }
+
+  var stock   = Number(s.getRange(row,5).getValue()||0);
+  var prevPV  = Number(s.getRange(row,3).getValue()||0);
+  var prevAvg = Number(s.getRange(row,6).getValue()||0);
+
+  // Weighted avg
+  var newAvg = (stock>0) ? ((prevAvg*stock + unitCostGs*qty)/(stock+qty)) : unitCostGs;
+  s.getRange(row,6).setValue(newAvg);        // F: CostoPromedio
+  s.getRange(row,8).setValue(unitCostGs);    // H: UltimoCosto
+  s.getRange(row,5).setValue(stock + qty);   // E: Stock
+
+  // Sale price: prefer provided salePrice, else avg with cost, but we already pass 2x by default
+  var newPV = (Number(salePriceGs||0) > 0) ? Number(salePriceGs)
+             : ((stock>0 && prevPV>0) ? ((prevPV + unitCostGs)/2) : unitCostGs);
+
+  s.getRange(row,3).setValue(newPV);         // C: PrecioVenta
+  try { s.getRange(row,10).setValue(newPV); }catch(e){}     // J: PrecioSugerido
+  try { var markup = (newPV>0 && newAvg>0) ? ((newPV - newAvg)/newAvg*100) : 0;
+        s.getRange(row,9).setValue(markup); } catch(e){}    // I: Markup%
+
+  // Optional: keep last Color/Talla in K/L if exist
+  var totalCols = s.getMaxColumns();
+  if (totalCols>=12){
+    s.getRange(row,11).setValue(String(color||'')); // K Color
+    s.getRange(row,12).setValue(String(size||''));  // L Talla
+  }
+}
+
+
+
+/** Last headers by factura/pdf, newest first. */
+function listPurchaseHistory_(cursor, limit){
+  cursor = Math.max(0, Number(cursor||0));
+  limit  = Math.max(1, Number(limit||5));
+  var sh = sheetByName_('Compras'); if (!sh || sh.getLastRow()<=1) return ok_({ ok:true, items:[], next:null });
+  var rows = sh.getRange(2,1,sh.getLastRow()-1,16).getValues(); rows.reverse();
+  var seen={}, out=[], count=0;
+  for (var i=cursor; i<rows.length && out.length<limit; i++){
+    var r=rows[i], factura=String(r[6]||''), fileId=String(r[15]||'');
+    var key=fileId||factura; if (seen[key]) continue; seen[key]=1;
+    out.push({ date:r[0], supplier:r[1], factura:factura, fileId:fileId,
+               fileUrl: fileId?('https://drive.google.com/file/d/'+fileId+'/view'):'', totalGs:Number(r[5]||0) });
+    count++;
+  }
+  var next = (cursor+count < rows.length) ? (cursor+count) : null;
+  return ok_({ ok:true, items: out, next: next });
+}
+
+function purchaseDetails_(factura){
+  var sh = sheetByName_('Compras'); if (!sh || sh.getLastRow()<=1) return ok_({ ok:true, items:[] });
+  var rows = sh.getRange(2,1,sh.getLastRow()-1,16).getValues(), out=[];
+  rows.forEach(function(r){
+    if (String(r[6]||'')===String(factura)){
+      out.push({ code:r[8], product:r[2], color:r[9], size:r[10], qty:r[3],
+                 unitGs:r[4], totalGs:r[5], unitRS:r[12], totalRS:r[13], rate:r[14] });
+    }
+  });
+  return ok_({ ok:true, items: out });
+}
+
+/** One item per product code from Productos!E (fast) */
+function listStockFromProductos_(){
+  var sh = sheetByName_('Productos'), out=[];
+  if (sh && sh.getLastRow()>1){
+    var rows = sh.getRange(2,1,sh.getLastRow()-1,12).getValues();
+    rows.forEach(function(r){
+      var code = String(r[0]||'').trim(); if (!code) return;
+      out.push({ code:code, name:String(r[1]||code), stock:Number(r[4]||0), defaultPrice:Number(r[2]||r[9]||0), color:String(r[10]), size:String(r[11]) });
+    });
+  }
+  return { ok:true, items: out };
+}
+
+// Pretty-pricing for Guaraníes with slight upward bias near 20k/80k.
+function prettyPriceGs_(x){
+  x = Math.max(0, Number(x||0));
+  var base = Math.floor(x/100000)*100000;    // chunk de 100k
+  var r = x - base;                           // resto dentro del chunk
+
+  // Breakpoints (en Gs) entre endings preferidos del chunk:
+  var B0_20   = 10000;  // 0 <-> 20k   (mitad en 10k)
+  var B20_30  = 23000;  // 20 <-> 30k  (sesgo a 30k)
+  var B30_50  = 40000;  // 30 <-> 50k
+  var B50_70  = 60000;  // 50 <-> 70k
+  var B70_80  = 75000;  // 70 <-> 80k
+  var B80_100 = 88000;  // 80 <-> 100k (sesgo a 100k)
+
+  var off;
+  if (r < B0_20)        off = 0;
+  else if (r < B20_30)  off = 20000;
+  else if (r < B30_50)  off = 30000;
+  else if (r < B50_70)  off = 50000;
+  else if (r < B70_80)  off = 70000;
+  else if (r < B80_100) off = 80000;
+  else                  off = 100000;
+
+  return off===100000 ? base + 100000 : base + off;
+}
+
+// Wrapper: 2 × (Unit R$ × Tasa) y luego pretty-round.
+function suggestPriceFromUnitRS_(unitCostRS, rate){
+  var unitGs = Number(unitCostRS||0) * Number(rate||0);
+  return prettyPriceGs_(2 * unitGs);
 }
