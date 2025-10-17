@@ -3,3 +3,4 @@
 * seria interesante guardar este pdf en google drive. 
 * historial de ventas, solamente tipo las últimas 5 ventas, y con lazy loading cargar más, que solo tenga el encabezado y que cuando se haga un click pueda verse los detalles, en el encabezado incluir un link al pdf origen, por si el usuario quiera visualizarlo por A o B motivo.
 * Filter by code and description on stock view, also put sort by fields, format precio de venta, also add color and size fields.
+* Al hacer una compra debería restar el monto total de la caja.

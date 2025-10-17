@@ -1,52 +1,9 @@
 import React, { useMemo, useState } from 'react'
 import { GoogleSheetsRepo } from '../storage/GoogleSheetsRepo'
+import { fmtGs, fmtBRL, parseLocaleNumber, prettyPriceGs } from '../utils/money';
+
 const repo = new GoogleSheetsRepo()
 
-// Formatters
-const fmtGs  = new Intl.NumberFormat('es-PY', { maximumFractionDigits: 0 });
-const fmtBRL = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-// Parser que acepta "1.180.000", "138,50", "138.75"
-function parseLocaleNumber(raw: string, allowDecimals: boolean): number {
-  if (raw == null) return 0;
-  let s = String(raw).trim();
-  if (!s) return 0;
-  s = s.replace(/[^0-9.,]/g, '');
-  const lastDot = s.lastIndexOf('.');
-  const lastComma = s.lastIndexOf(',');
-  let decimalPos = Math.max(lastDot, lastComma);
-  let integer = s, decimal = '';
-  if (decimalPos >= 0 && allowDecimals){
-    integer = s.slice(0, decimalPos);
-    decimal = s.slice(decimalPos + 1);
-  }
-  integer = integer.replace(/[.,]/g, '');
-  let out = integer;
-  if (allowDecimals && decimal){
-    decimal = decimal.replace(/[^0-9]/g, '').slice(0, 6);
-    out = integer + '.' + decimal;
-  }
-  const n = Number(out);
-  return allowDecimals ? n : Math.round(n);
-}
-
-// Pretty price (Gs) — misma lógica del backend
-// Pretty-pricing in the UI (same thresholds as backend)
-function prettyPriceGs(x:number): number{
-  x = Math.max(0, Number(x||0));
-  const base = Math.floor(x/100000)*100000;
-  const r = x - base;
-  const B0_20=10000, B20_30=23000, B30_50=40000, B50_70=60000, B70_80=75000, B80_100=88000;
-  let off:number;
-  if (r < B0_20) off = 0;
-  else if (r < B20_30) off = 20000;
-  else if (r < B30_50) off = 30000;
-  else if (r < B50_70) off = 50000;
-  else if (r < B70_80) off = 70000;
-  else if (r < B80_100) off = 80000;
-  else off = 100000;
-  return off===100000 ? base+100000 : base+off;
-}
 
 // MoneyInput: fuera de foco -> string formateado; en foco -> número crudo; onBlur -> parsea y dispara onChange
 type MoneyInputProps = { value:number; currency:'PYG'|'BRL'; style?:React.CSSProperties; onChange:(n:number)=>void };
@@ -91,6 +48,13 @@ export default function PurchaseOCRUpload(){
   const [invoice, setInvoice] = useState<string>('')
   const [fileId, setFileId] = useState<string>(''); const [fileUrl, setFileUrl] = useState<string>('')
   const [busy, setBusy] = useState(false)
+
+  React.useEffect(()=>{
+    setLines(prev => prev.map(l => ({
+      ...l,
+      salePriceGs: prettyPriceGs( 2 * (Number(l.unitCostRS)||0) * (Number(exchangeRate)||0) )
+    })));
+  }, [exchangeRate]);
 
   const totalRS = useMemo(()=> lines.reduce((s,l)=> s + (l.unitCostRS*l.qty), 0), [lines])
   const totalGs = useMemo(()=> totalRS * (exchangeRate||0), [totalRS,exchangeRate])
@@ -202,7 +166,11 @@ export default function PurchaseOCRUpload(){
                       <td><input type="number" value={l.qty} onChange={e=>edit(i,'qty', e.target.value)} style={{width:80}}/></td>
                       <td className="num">
                         {/* <input type="number" value={fmtBRL.format(l.unitCostRS)} onChange={e=>edit(i,'unitCostRS', e.target.value)} style={{width:110}}/> */}
-                        <MoneyInput value={Number(l.unitCostRS||0)} currency="BRL" onChange={(n)=>{ edit(i,'unitCostRS', n); /* si querés: recalc pretty sugerido */ }}
+                        {/* <MoneyInput value={Number(l.unitCostRS||0)} currency="BRL" onChange={(n)=>{ edit(i,'unitCostRS', n); }}
+                          style={{width:120}}/> */}
+                          <MoneyInput value={Number(l.unitCostRS||0)} currency="BRL"
+                          onChange={(n)=>{ edit(i,'unitCostRS', n);
+                            edit(i,'salePriceGs', prettyPriceGs( 2 * n * (exchangeRate||0) )); }}
                           style={{width:120}}/>
                         </td>
                       <td className="num">

@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { GoogleSheetsRepo } from '../storage/GoogleSheetsRepo'
+import { fmtGs } from '../utils/money'
+
 const repo = new GoogleSheetsRepo()
 
 export default function PurchaseHistory(){
@@ -32,7 +34,7 @@ export default function PurchaseHistory(){
           <li key={i} style={{border:'1px solid #ddd', borderRadius:6, padding:8, marginBottom:8}}>
             <div style={{display:'flex', gap:12, alignItems:'center', justifyContent:'space-between'}}>
               <div><b>{new Date(h.date).toLocaleString()}</b> — {h.supplier} — {h.factura} &nbsp;
-                <span style={{opacity:0.7}}>Total: {Math.round(h.totalGs)} Gs</span>
+                <span style={{opacity:0.7}}>Total: {fmtGs.format(h.totalGs||0)} Gs</span>
               </div>
               <div>
                 {h.fileUrl && <a href={h.fileUrl} target="_blank" rel="noreferrer" style={{marginRight:12}}>PDF</a>}

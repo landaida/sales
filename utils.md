@@ -22,7 +22,7 @@ npm run dev
 
 * En **cada interacción**, envía **todo el source code completo** en un **.zip** (sin `node_modules` ni archivos que no sean código) e **incluye siempre `apps-scripts`**.
 * **No preguntes** si quiero el zip: **envíalo siempre**.
-* El archivo debe terminar con **timestamp en milisegundos** antes de `.zip` (ej.: `ventas-...-v13.1-1759965006744.zip`), asegurate que no ocurran errores frecuentes con el zip como `Code interpreter session expired` y otros, hay veces que me pasas solo texto y no es un link.
+* El archivo debe terminar con **timestamp en milisegundos** antes de `.zip` (ej.: `ventas-...-v13.1-1759965006744.zip`), asegurate que no ocurran errores frecuentes con el zip como `Code interpreter session expired`, `File not found` y otros, hay veces que me pasas solo texto y no es un link.
 * Me gustaría que muestres el nuevo código sugerido, en qué archivo ponerlo o dónde editar, muestra el código detalladamente.
 2. **No remover features**
 

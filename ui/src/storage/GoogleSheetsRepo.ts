@@ -50,14 +50,14 @@ export class GoogleSheetsRepo implements IRepository {
     return jget(`action=variants`);
   }
   async searchClients(q:string): Promise<{ ok:boolean; items:{name:string;id:string}[] }>{ return jget('action=clients&q='+encodeURIComponent(q)); }
-  async submitSale(payload: {
-    customer: { name: string; id: string };
-    discountTotal?: number;
-    dueDate?: string;
-    items: SaleItem[];
-  }): Promise<{ ok: boolean; ticketId: string; total: number }> {
-    return jpost({ action:'sale', ...payload });
-  }
+  // async submitSale(payload: {
+  //   customer: { name: string; id: string };
+  //   discountTotal?: number;
+  //   dueDate?: string;
+  //   items: SaleItem[];
+  // }): Promise<{ ok: boolean; ticketId: string; total: number }> {
+  //   return jpost({ action:'sale', ...payload });
+  // }
   async listStockFast(): Promise<{ ok:boolean; items: any[] }>{
     return jget('action=stockfast');
   }
@@ -65,13 +65,31 @@ export class GoogleSheetsRepo implements IRepository {
   async purchaseParse(payload:{ filename:string; b64:string; supplier?:string }){
     return jpost({ action:'purchase_parse', ...payload });
   }
-  async purchaseSave(payload:any){
-    return jpost({ action:'purchase_save', ...payload });
-  }
+  // async purchaseSave(payload:any){
+  //   return jpost({ action:'purchase_save', ...payload });
+  // }
   async purchaseHistory(cursor=0, limit=5){
     return jget(`action=purchase_history&cursor=${cursor}&limit=${limit}`);
   }
   async purchaseDetails(factura:string){
     return jget(`action=purchase_details&factura=${encodeURIComponent(factura)}`);
   }
+
+  base = (import.meta as any).env.VITE_API_BASE || '/gsapi';
+  API = (p:string)=> p.startsWith('http') ? p : (this.base+(this.base.endsWith('/exec')?'?':'/exec?')+p);
+  jget = async (q:string)=> (await fetch(this.API(q))).json();
+  jpost= async (b:any)=> (await fetch(this.API(''),{method:'POST',body:JSON.stringify(b)})).json();
+
+  cashbox(){ return this.jget('action=cashbox'); }
+  cashboxMoves(cursor=0,limit=10){ return this.jget(`action=cashbox_moves&cursor=${cursor}&limit=${limit}`); }
+  arByClient(){ return this.jget('action=ar_by_client'); }
+  arDetails(client:string){ return this.jget(`action=ar_details&client=${encodeURIComponent(client)}`); }
+
+  submitSale(payload:any){ return this.jpost({ action:'sale', ...payload }); }
+  purchaseSave(payload:any){ return this.jpost({ action:'purchase_save', ...payload }); }
+
+  listExpenses(cursor=0, limit=5){ return this.jget(`action=expenses_list&cursor=${cursor}&limit=${limit}`); }
+  receivablesPending(cursor=0, limit=5){ return this.jget(`action=receivables_pending&cursor=${cursor}&limit=${limit}`); }
+  receivablePay(ticketId:string, cuotaN:number, amount:number, note?:string){ return this.jpost({ action:'receivable_pay', ticketId, cuotaN, amount, note }); }
+  receiptsHistory(cursor=0, limit=5){ return this.jget(`action=receipts_history&cursor=${cursor}&limit=${limit}`); }
 }

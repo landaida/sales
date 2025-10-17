@@ -2,9 +2,36 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { GoogleSheetsRepo } from '../storage/GoogleSheetsRepo';
 import type { VariantItem, SaleItem } from '../storage/IRepository';
+import { fmtGs, parseLocaleNumber } from '../utils/money';
 
 const repo = new GoogleSheetsRepo();
 const keyOf = (v:{code:string;color:string;size:string}) => `${v.code}|${v.color}|${v.size}`;
+
+type Item={code:string;name:string;qty:number;price:number}
+type Sch={n:number; date:string; amount:number; manual?:boolean}
+
+function MoneyInputGs({
+  value, onChange, style,
+}: { value:number; onChange:(n:number)=>void; style?:React.CSSProperties }) {
+  const [editing,setEditing]=useState(false);
+  const [text,setText]=useState('');
+  useEffect(()=>{ if(!editing) setText(fmtGs.format(Number(value||0))) },[value,editing]);
+
+  return (
+    <input
+      type="text" inputMode="numeric" value={text}
+      onFocus={()=>{ setEditing(true); setText(String(Number(value||0))) }}
+      onChange={e=>{                       // <<--- recalcula en cada tecla
+        setText(e.target.value);
+        onChange(parseLocaleNumber(e.target.value,false));
+      }}
+      onBlur={()=> setEditing(false)}
+      style={style}
+    />
+  );
+}
+
+
 
 export default function SaleTicket(){
   const [variants, setVariants] = useState<VariantItem[]>([]);
@@ -12,7 +39,17 @@ export default function SaleTicket(){
   const [cart, setCart] = useState<Record<string, SaleItem>>({});
   const [custName, setCustName] = useState('');
   const [custId,   setCustId]   = useState('');
+  
   const [discount, setDiscount] = useState<number>(0);
+  // const [down,setDown]=useState(0)
+  const [down, setDown] = useState<number>(0);
+
+  const [items,setItems]=useState<Item[]>([{code:'30262',name:'TOP',qty:1,price:190000}])
+  const [mode,setMode]=useState<'contado'|'plazo'>('contado')
+  const [n,setN]=useState(0)
+  const [kind,setKind]=useState<'mensual'|'semanal'>('mensual')
+  const [sch,setSch]=useState<Sch[]>([])
+  const [touch,setTouch]=useState(0)               // invalidador de recálculo
 
   // Load variants with stock
   useEffect(()=>{
@@ -36,6 +73,37 @@ export default function SaleTicket(){
       setStock(m);
     });
   },[]);
+
+  // Client filter & suggestions
+  const [clientFilter, setClientFilter] = useState('');
+  const [clientMatches, setClientMatches] = useState<{name:string;id:string}[]>([]);
+
+  // credit controls
+  const [paymentMode, setPaymentMode] = useState<'contado'|'plazo'>('contado');
+  const [creditKind, setCreditKind]   = useState<'mensual'|'semanal'>('mensual');
+  const [numCuotas, setNumCuotas]     = useState<string>('0');
+
+  // nuevos estados
+  const [downPayment,setDownPayment]=useState<number>(0);
+  type Cuota = { n:number; fecha:string; monto:number };
+  const [installments, setInstallments] = useState<Cuota[]>([]);
+
+
+
+  
+  function regenPlan(total:number, down:number, kind:'mensual'|'semanal', n:number){
+    const resto = Math.max(0, total - (down||0));
+    const per   = n>0 ? Math.round(resto / n) : 0;
+    const base  = new Date();
+    const next:Cuota[] = [];
+    for(let i=1;i<=n;i++){
+      const d = new Date(base);
+      if(kind==='semanal') d.setDate(d.getDate()+i*7); else d.setMonth(d.getMonth()+i);
+      next.push({ n:i, fecha: d.toISOString().slice(0,10), monto: per });
+    }
+    setInstallments(next);
+  }
+
 
   // Left click => move 1 unit to ticket
   function add(v: VariantItem){
@@ -73,6 +141,163 @@ export default function SaleTicket(){
   }, [cart]);
   const total = Math.max(0, Number(subtotal) - Number(discount||0));
   
+    // Recalcular plan respetando cuotas manuales
+  // function recalcPlan(respectManual:boolean){
+  //   if (mode!=='plazo'){ setSch([]); return; }
+  //   const base = new Date();
+  //   // slots base con fechas
+  //   let next:Sch[] = Array.from({length: Math.max(0,n)}, (_,i)=>{
+  //     const d = new Date(base);
+  //     if(kind==='semanal') d.setDate(d.getDate()+(i+1)*7); else d.setMonth(d.getMonth()+(i+1));
+  //     const exist = sch[i];
+  //     return { n:i+1, date: exist?.date || d.toISOString().slice(0,10), amount: 0, manual: respectManual ? exist?.manual : false };
+  //   });
+  //   // reset manual si no respetamos
+  //   if (!respectManual) next = next.map(s=> ({...s, manual:false}));
+
+  //   // suma manual
+  //   const manualSum = next.reduce((acc,slot,i)=> acc + (slot.manual ? (sch[i]?.amount||0) : 0), 0);
+  //   // repartir resto entre no-manuales
+  //   const restante = Math.max(0, total - (down||0) - manualSum);
+  //   const libresIdx = next.map((s,i)=> s.manual? -1 : i).filter(i=> i>=0);
+  //   const m = libresIdx.length;
+  //   if (m>0){
+  //     const baseVal = Math.floor(restante / m);
+  //     let resto = restante - baseVal*m;
+  //     libresIdx.forEach((i,idx)=>{ next[i].amount = baseVal + (idx < resto ? 1 : 0); });
+  //   }
+  //   // reinyectar manuales
+  //   next = next.map((s,i)=> s.manual ? ({...s, amount: sch[i]?.amount||0}) : s);
+  //   setSch(next);
+  // }
+
+  function recalcPlan(respectManual: boolean){
+  if (mode !== 'plazo'){ setSch([]); return; }
+
+  const base = new Date();
+  let next: Sch[] = Array.from({ length: Math.max(0, n) }, (_, i) => {
+    const d = new Date(base);
+    if (kind === 'semanal') d.setDate(d.getDate() + (i + 1) * 7); else d.setMonth(d.getMonth() + (i + 1));
+    const exist = sch[i];
+    return { n: i + 1, date: exist?.date || d.toISOString().slice(0, 10), amount: 0, manual: respectManual ? exist?.manual : false };
+  });
+
+  if (!respectManual) next = next.map(s => ({ ...s, manual: false }));
+
+  const manualSum = next.reduce((acc, slot, i) => acc + (slot.manual ? (sch[i]?.amount || 0) : 0), 0);
+  const restante = Math.max(0, total - (down || 0) - manualSum);
+  const libres = next.map((s, i) => (s.manual ? -1 : i)).filter(i => i >= 0);
+
+  if (libres.length > 0){
+    const baseVal = Math.floor(restante / libres.length);
+    let resto = restante - baseVal * libres.length;
+    libres.forEach((i, idx) => { next[i].amount = baseVal + (idx < resto ? 1 : 0); });
+  }
+
+  next = next.map((s, i) => (s.manual ? { ...s, amount: sch[i]?.amount || 0 } : s));
+  setSch(next);
+}
+
+
+  // recalcular plan cuando cambian entradas
+  // useEffect(()=>{
+  //   if (mode!=='plazo'){ setSch([]); return; }
+  //   const rest = Math.max(0, total - (down||0));
+  //   const per  = n>0 ? rest/n : 0;
+  //   const t = new Date(), arr:Sch[]=[];
+  //   for(let i=1;i<=n;i++){
+  //     const d = new Date(t);
+  //     if(kind==='semanal') d.setDate(d.getDate()+i*7); else d.setMonth(d.getMonth()+i);
+  //     arr.push({ n:i, date:d.toISOString().slice(0,10), amount:per });
+  //   }
+  //   setSch(arr);
+  // }, [mode, down, n, kind, total]);
+
+    // triggers de recálculo
+  useEffect(()=>{ recalcPlan(true) }, [mode, down, n, kind, total, touch])
+
+    // Editar cuota: bloquea esa cuota y redistribuye el resto
+  // function editCuota(i:number, field:'date'|'amount', raw:string){
+  //   setSch(prev=>{
+  //     const copy = prev.map((x)=> ({...x}));
+  //     if (field==='date'){ copy[i].date = raw; return copy; }
+  //     const val = parseLocaleNumber(raw,false);
+  //     copy[i].amount = val;
+  //     copy[i].manual = true;
+  //     // redistribuir no-manuales
+  //     const manualSum = copy.reduce((acc,x)=> acc + (x.manual? x.amount:0), 0);
+  //     const restante = Math.max(0, total - (down||0) - manualSum);
+  //     const libresIdx = copy.map((s,ix)=> s.manual? -1 : ix).filter(ix=> ix>=0);
+  //     const m = libresIdx.length;
+  //     if (m>0){
+  //       const baseVal = Math.floor(restante / m);
+  //       let resto = restante - baseVal*m;
+  //       libresIdx.forEach((ix,idx)=>{ copy[ix].amount = baseVal + (idx < resto ? 1 : 0); });
+  //     }
+  //     return copy;
+  //   });
+  // }
+
+//   function editCuota(i:number, field:'date'|'amount', raw:string){
+//   setSch(prev => {
+//     const copy = prev.map(x => ({ ...x }));
+//     if (field === 'date'){ copy[i].date = raw; return copy; }
+
+//     // amount:
+//     const val = parseLocaleNumber(raw, false);
+//     copy[i].amount = val;
+//     copy[i].manual = true;
+
+//     // Repartir restante entre no-manuales
+//     const manualSum = copy.reduce((acc, x) => acc + (x.manual ? x.amount : 0), 0);
+//     const restante = Math.max(0, total - (down || 0) - manualSum);
+//     const libres = copy.map((s, ix) => (s.manual ? -1 : ix)).filter(ix => ix >= 0);
+//     if (libres.length > 0){
+//       const baseVal = Math.floor(restante / libres.length);
+//       let resto = restante - baseVal * libres.length;
+//       libres.forEach((ix, idx) => { copy[ix].amount = baseVal + (idx < resto ? 1 : 0); });
+//     }
+//     return copy;
+//   });
+// }
+
+function editCuota(i:number, raw:string){
+  setSch(prev=>{
+    const copy = prev.map(x=> ({...x}));
+    const val  = parseLocaleNumber(raw,false);
+    if (!copy[i]) copy[i] = { n:i+1, date:new Date().toISOString().slice(0,10), amount:0 };
+    copy[i].amount = val;
+    copy[i].manual = true;
+
+    const manualSum = copy.reduce((a,x)=> a + (x.manual ? x.amount : 0), 0);
+    const restante  = Math.max(0, total - (down||0) - manualSum);
+    const libres    = copy.map((s,ix)=> s.manual? -1 : ix).filter(ix=> ix>=0);
+
+    if (libres.length>0){
+      const baseVal = Math.floor(restante/libres.length);
+      let resto = restante - baseVal*libres.length;
+      libres.forEach((ix,idx)=>{ copy[ix].amount = baseVal + (idx<resto ? 1 : 0); });
+    }
+    return copy;
+  });
+}
+
+
+  // Reset manual & recalcular todo
+  function resetPlan(){ 
+    setSch(prev=> prev.map(s=> ({...s, manual:false}))); 
+    recalcPlan(false);
+    // setTouch(t=>t+1); 
+  }
+
+  // editar c/ fila
+  function changeSch(i:number, field:'date'|'amount', v:string){
+    setSch(prev => prev.map((s,ix)=> ix===i ? {...s, [field]: field==='amount' ? parseLocaleNumber(v,false) : v } : s));
+  }
+
+  // useEffect(()=>{
+  //    if(paymentMode==='plazo' && Number(numCuotas ?? "")>0) regenPlan(total, downPayment, creditKind, Number(numCuotas)); 
+  // },[paymentMode, creditKind, numCuotas, total, downPayment]);
 
   async function submit(){
     if (!custName.trim() || !custId.trim()){
@@ -84,14 +309,18 @@ export default function SaleTicket(){
     }
     const items = Object.values(cart);
     if (!items.length){ alert('No hay ítems en el ticket'); return; }
-    const res = await repo.submitSale({
+    const payload:any = {
       customer: { name: custName.trim(), id: custId.trim() },
       discountTotal: discount||0,
-      paymentMode,
-      creditKind,
-      numCuotas: paymentMode==='plazo' ? Number(numCuotas||0) : 0,
+      paymentMode:mode,
+      creditKind:kind,
+      numCuotas:n,
+      downPayment:down,
       items
-    });
+    }
+    if (sch.length>0) payload.installments = sch;
+    const res = await repo.submitSale(payload);
+
     if (res.ok){
       alert(`Venta OK. Ticket ${res.ticketId}. Total ${res.total}`);
       // Reset ticket y refrescar stock desde el backend
@@ -142,14 +371,6 @@ const visible = useMemo(()=>{
 }, [variants, stock, filterText, sortKey]);
 
 
-// Client filter & suggestions
-const [clientFilter, setClientFilter] = useState('');
-const [clientMatches, setClientMatches] = useState<{name:string;id:string}[]>([]);
-
-// credit controls
-const [paymentMode, setPaymentMode] = useState<'contado'|'plazo'>('contado');
-const [creditKind, setCreditKind]   = useState<'mensual'|'semanal'>('mensual');
-const [numCuotas, setNumCuotas]     = useState<string>('0');
 
 
 // Debounced search to backend (?action=clients&q=)
@@ -255,48 +476,64 @@ useEffect(()=>{
         </div>
 
         <div style={{ marginTop:12, display:'grid', gap:6, maxWidth:360 }}>
-          <div>Subtotal: <b>{subtotal.toFixed(0)} Gs</b></div>
+          <div>Subtotal: {fmtGs.format(subtotal)} — Total: {fmtGs.format(total)}</div>
+          {/* <div>Subtotal: <b>{subtotal.toFixed(0)} Gs</b></div> */}
           <div>Descuento total (valor): <input type="number" value={discount} onChange={e=>setDiscount(Number(e.target.value)||0)} style={{ width:120 }} /></div>
           <div>A pagar: <b>{total.toFixed(0)} Gs</b></div>
-          <div style={{ display:'grid', gap:6, maxWidth:420, marginTop:8 }}>
-            <label style={{display:'flex', gap:8, alignItems:'center'}}>
-              <span>Pago:</span>
-              <select value={paymentMode} onChange={e=>setPaymentMode(e.target.value as any)}>
-                <option value="contado">Contado</option>
-                <option value="plazo">A plazo</option>
+          <div style={{display:'flex',gap:8,margin:'8px 0'}}>
+            <select value={mode} onChange={e=>setMode(e.target.value as any)}>
+              <option value="contado">Contado</option><option value="plazo">A plazo</option>
+            </select>
+            <button onClick={resetPlan} style={{marginLeft:8}}>Reestablecer</button>
+            {mode==='plazo' && (<>
+              <span>Entrega (Gs):</span>
+              {/* <input 
+                type="number"
+                type="text" inputMode="numeric"
+                value={fmtGs.format(down)} 
+                value={down} 
+                onFocus={e=> e.currentTarget.value=String(down)}
+                onBlur={e=> setDown(parseLocaleNumber(e.currentTarget.value,false))} style={{width:120}}/> */}
+                <MoneyInputGs value={down} onChange={setDown} style={{ width: 120 }} />
+              <span>Cuotas:</span><input type="number" value={n} onChange={e=>setN(Number(e.target.value)||0)} style={{width:70}}/>
+              <select value={kind} onChange={e=>setKind(e.target.value as any)}>
+                <option value="mensual">Mensual</option><option value="semanal">Semanal</option>
               </select>
-            </label>
-
-            {paymentMode==='plazo' && (
-              <>
-                <label style={{display:'flex', gap:8, alignItems:'center'}}>
-                  <span>Tipo crédito:</span>
-                  <select value={creditKind} onChange={e=>setCreditKind(e.target.value as any)}>
-                    <option value="mensual">Mensual</option>
-                    <option value="semanal">Semanal</option>
-                  </select>
-                </label>
-                <label>Cuotas:
-                  <input type="number" min={1} value={numCuotas} onChange={e=>setNumCuotas(e.target.value)} style={{ width:100, marginLeft:8 }} />
-                </label>
-
-                {/* Preview simple: fechas generadas */}
-                <div style={{border:'1px dashed #bbb', padding:8, borderRadius:6}}>
-                  <b>Plan propuesto:</b>
-                  <ul style={{marginTop:6}}>
-                    {Array.from({length: Math.max(0, Number(numCuotas||0))}).map((_,i)=>{
-                      const d = new Date();
-                      if (creditKind==='semanal') d.setDate(d.getDate()+(i+1)*7);
-                      else d.setMonth(d.getMonth()+(i+1));
-                      return <li key={i}>Cuota {i+1}: {d.toLocaleDateString()}</li>
-                    })}
-                  </ul>
-                  <small>(El usuario podrá editar estas fechas en la planilla ACobrar)</small>
-                </div>
-              </>
-            )}
+            </>)}
           </div>
+          {mode==='plazo' && sch.length>0 && (<div style={{marginTop:8}}>
+            <h4>Plan de pagos (editable)</h4>
+            <table><thead><tr><th>#</th><th>Fecha</th><th>Monto</th></tr></thead>
+              <tbody>{sch.map((s,i)=>(<tr key={i}>
+                <td>{s.n}</td>
+                <td><input type="date" value={s.date} onChange={e=>changeSch(i,'date',e.target.value)}/></td>
+                <td>
+                  {/* <input 
+                      type="number"
+                      type="text" inputMode="numeric" 
+                      value={fmtGs.format(s.amount)}
+                      value={s.amount}
+                      onFocus={e=> e.currentTarget.value=String(s.amount)}
+                      onBlur={e=>editCuota(i,'amount', e.currentTarget.value)} style={{width:130}}/> */}
+                    {/* <input
+                      type="text"
+                      inputMode="numeric"
+                      value={fmtGs.format(s.amount)}
+                      onFocus={(e)=> (e.currentTarget.value = String(s.amount))}
+                      onBlur={(e)=> editCuota(i,'amount', e.currentTarget.value)}
+                      style={{ width: 130 }}
+                    /> */}
 
+                    <MoneyInputGs
+                      value={s.amount}
+                      onChange={(n)=> editCuota(i, String(n))}
+                      style={{width:130}}
+                    />
+                </td>
+                <td style={{textAlign:'center'}}>{s.manual?'✔':''}</td>      
+              </tr>))}</tbody>
+            </table>
+          </div>)}
           <div><button onClick={submit} style={{ padding:'8px 16px', fontWeight:700, borderRadius:8 }}>Registrar venta</button></div>
         </div>
       </div>
