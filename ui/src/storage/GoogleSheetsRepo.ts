@@ -58,8 +58,8 @@ export class GoogleSheetsRepo implements IRepository {
   // }): Promise<{ ok: boolean; ticketId: string; total: number }> {
   //   return jpost({ action:'sale', ...payload });
   // }
-  async listStockFast(): Promise<{ ok:boolean; items: any[] }>{
-    return jget('action=stockfast');
+  async listStockFast(cursor=0, limit=5, showWithoutStock=false, filterText='') {
+    return jget(`action=stockfast&cursor=${cursor}&limit=${limit}&showWithoutStock=${showWithoutStock}&filterText=${filterText}`);
   }
   // Purchase review
   async purchaseParse(payload:{ filename:string; b64:string; supplier?:string }){
@@ -82,7 +82,7 @@ export class GoogleSheetsRepo implements IRepository {
 
   cashbox(){ return this.jget('action=cashbox'); }
   cashboxMoves(cursor=0,limit=10){ return this.jget(`action=cashbox_moves&cursor=${cursor}&limit=${limit}`); }
-  arByClient(){ return this.jget('action=ar_by_client'); }
+  arByClient(cursor=0, limit=5){ return this.jget(`action=ar_by_client&cursor=${cursor}&limit=${limit}`); }
   arDetails(client:string){ return this.jget(`action=ar_details&client=${encodeURIComponent(client)}`); }
 
   submitSale(payload:any){ return this.jpost({ action:'sale', ...payload }); }

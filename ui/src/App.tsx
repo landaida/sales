@@ -7,6 +7,9 @@ import PurchaseOCRUpload from './components/PurchaseOCRUpload'
 import PurchaseHistory from './components/PurchaseHistory'
 import DashboardView from './components/DashboardView'
 import Cashbox from './components/Cashbox'
+import CobrosView from './components/CobrosView'
+import SalesHistory from './components/SalesHistory'
+import CashIncome from './components/CashIncome'
 
 export default function App(){
   const [route, setRoute] = React.useState<string>(window.location.hash || '#importarpdf')
@@ -20,17 +23,19 @@ export default function App(){
       <h1>Sistema de Ventas Simple</h1>
       <nav style={{marginBottom:12}}>
         {link('#caja','Caja')}{link('#venta','Venta')}{link('#stock','Stock')}{link('#cobros','Cobros')}
-        {link('#gastos','Gastos')}{link('#importarpdf','Compra')}{link('#PaymentsHistory','Historial de Pagos')}{link('#PurchaseHistory','Historial de Compras')}{link('#dashboard','Dashboard')}
+        {link('#gastos','Gastos')}{link('#importarpdf','Compra')}{link('#PurchaseHistory','Historial de Compras')}{link('#SalesHistory','Historial de Ventas')}{link('#dashboard','Dashboard')}{link('#ingreso','Ingreso efectivo')}
       </nav>
       {route==='#caja' && <Cashbox />}
       {route==='#venta' && <SaleTicket />}
       {route==='#stock' && <StockView />}
-      {route==='#cobros' && <PaymentsHistory scope="due" />}
+      {route==='#cobros' && <CobrosView />}
       {route==='#gastos' && <ExpensesView />}
       {route==='#importarpdf' && <PurchaseOCRUpload />}
-      {route==='#PaymentsHistory' && <PaymentsHistory />}
       {route==='#PurchaseHistory' && <PurchaseHistory />}
-      {route==='#dashboard' && <DashboardView />}
+      {route==='#PaymentsHistory' && <PaymentsHistory />}
+      {route==='#SalesHistory' && <SalesHistory />}
+      {/* {route==='#dashboard' && <DashboardView />} */}
+      {route==='#ingreso' && <CashIncome />}
     </main>
   )
 }

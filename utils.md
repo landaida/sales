@@ -2,6 +2,11 @@ https://script.google.com/macros/s/AKfycbxawm5UCRYvNcZTDmAAZei97gS8cZttOuJKQUetk
 
 https://script.google.com/macros/s/AKfycbxawm5UCRYvNcZTDmAAZei97gS8cZttOuJKQUetkjdbZZSNVZvbRRAn71TGhWeWAJYv/exec?action=products
 
+https://script.google.com/macros/s/AKfycbxawm5UCRYvNcZTDmAAZei97gS8cZttOuJKQUetkjdbZZSNVZvbRRAn71TGhWeWAJYv/exec?action=stockfast&cursor=0&limit=5&showWithoutStock=false
+
+https://script.google.com/macros/s/AKfycbxawm5UCRYvNcZTDmAAZei97gS8cZttOuJKQUetkjdbZZSNVZvbRRAn71TGhWeWAJYv/exec?action=receipts_history
+
+
 
 http://localhost:5173/gsapi?action=dashboard
 http://localhost:5173/gsapi?action=products

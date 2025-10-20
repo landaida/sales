@@ -350,10 +350,16 @@ function matchVariant(v: VariantItem, terms: string[]): boolean {
   return terms.every(t => code.includes(t) || name.includes(t) || size.includes(t) || color.includes(t));
 }
 
+// Antes de mapear variants, armá un set con los códigos que están en el carrito
+const codesInCart = new Set(Object.values(cart).map(it => it.code));
+
 // NEW: build visible list based on filter + sort
 const visible = useMemo(()=>{
   const terms = filterText.trim().toUpperCase().split(/\s+/).filter(Boolean);
   let arr = variants.filter(v => {
+    const inCart = codesInCart.has(v.code);
+    const s = stock[keyOf(v)] ?? v.stock;
+    if (!inCart && s<=0) return false;     // <<--- oculta stock 0 si no está en venta
     if ((stock[keyOf(v)] ?? v.stock) < 0) return false;  // safeguard
     if (!terms.length) return true;
     return matchVariant(v, terms);
