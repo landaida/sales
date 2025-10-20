@@ -4,11 +4,11 @@ import StockView from './components/StockView'
 import PaymentsHistory from './components/PaymentsHistory'
 import ExpensesView from './components/ExpensesView'
 import PurchaseOCRUpload from './components/PurchaseOCRUpload'
-import PurchaseHistory from './components/PurchaseHistory'
-import DashboardView from './components/DashboardView'
+// import PurchaseHistory from './components/PurchaseHistory'
+// import DashboardView from './components/DashboardView'
 import Cashbox from './components/Cashbox'
 import CobrosView from './components/CobrosView'
-import SalesHistory from './components/SalesHistory'
+// import SalesHistory from './components/SalesHistory'
 import CashIncome from './components/CashIncome'
 
 export default function App(){
@@ -22,8 +22,8 @@ export default function App(){
     <main style={{maxWidth:1000, margin:'0 auto', padding:16}}>
       <h1>Sistema de Ventas Simple</h1>
       <nav style={{marginBottom:12}}>
-        {link('#caja','Caja')}{link('#venta','Venta')}{link('#stock','Stock')}{link('#cobros','Cobros')}
-        {link('#gastos','Gastos')}{link('#importarpdf','Compra')}{link('#PurchaseHistory','Historial de Compras')}{link('#SalesHistory','Historial de Ventas')}{link('#dashboard','Dashboard')}{link('#ingreso','Ingreso efectivo')}
+        {link('#caja','Caja')}{link('#importarpdf','Compras')}{link('#venta','Ventas')}{link('#stock','Stock')}{link('#cobros','Cobros')}
+        {link('#gastos','Gastos')}{/* {link('#PurchaseHistory','Historial de Compras')} */}{/* {link('#SalesHistory','Historial de Ventas')} */}{/* {link('#dashboard','Dashboard')} */}{link('#ingreso','Ingresos')}
       </nav>
       {route==='#caja' && <Cashbox />}
       {route==='#venta' && <SaleTicket />}
@@ -31,9 +31,9 @@ export default function App(){
       {route==='#cobros' && <CobrosView />}
       {route==='#gastos' && <ExpensesView />}
       {route==='#importarpdf' && <PurchaseOCRUpload />}
-      {route==='#PurchaseHistory' && <PurchaseHistory />}
+      {/* {route==='#PurchaseHistory' && <PurchaseHistory />} */}
       {route==='#PaymentsHistory' && <PaymentsHistory />}
-      {route==='#SalesHistory' && <SalesHistory />}
+      {/* {route==='#SalesHistory' && <SalesHistory />} */}
       {/* {route==='#dashboard' && <DashboardView />} */}
       {route==='#ingreso' && <CashIncome />}
     </main>

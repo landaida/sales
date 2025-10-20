@@ -1,6 +1,8 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, lazy, Suspense } from 'react'
 import { GoogleSheetsRepo } from '../storage/GoogleSheetsRepo'
 import { fmtGs, fmtBRL, parseLocaleNumber, prettyPriceGs } from '../utils/money';
+// ⬇️ carga on-demand
+const PurchaseHistory = lazy(() => import('./PurchaseHistory'));
 
 const repo = new GoogleSheetsRepo()
 
@@ -41,6 +43,8 @@ function MoneyInput({ value, currency, style, onChange }: MoneyInputProps){
 type DraftLine = { code:string; name:string; color:string; size:string; barcode:string; qty:number; unitCostRS:number; salePriceGs?:number }
 
 export default function PurchaseOCRUpload(){
+  const [tab, setTab] = useState<'compra'|'historial'>('compra');
+  const [showHistory, setShowHistory] = useState(false);
   const [file, setFile] = useState<File|null>(null)
   const [exchangeRate, setExchangeRate] = useState<number>(1340)
   const [lines, setLines] = useState<DraftLine[]>([])
@@ -102,103 +106,143 @@ export default function PurchaseOCRUpload(){
 
   return (
     <>
-      <style>
-        {`
-          .t { table-layout: fixed; width: 100%; border-collapse: collapse; }
-          .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-        `}
-      </style>
-        
-      <section>
-        <h2>Importar Compras (PDF con OCR)</h2>
+      {/* Tabs header */}
+      <div role="tablist" style={{display:'flex', gap:8, margin:'12px 0'}}>
+        <button
+          onClick={()=>setTab('compra')}
+          style={{
+            padding:'6px 12px',
+            borderRadius:8,
+            border:'1px solid #ccc',
+            background: tab==='compra' ? '#eee' : '#fff',
+            fontWeight: tab==='compra' ? 700 : 400
+          }}
+        >
+          Compra
+        </button>
+        <button
+          onClick={()=>setTab('historial')}
+          style={{
+            padding:'6px 12px',
+            borderRadius:8,
+            border:'1px solid #ccc',
+            background: tab==='historial' ? '#eee' : '#fff',
+            fontWeight: tab==='historial' ? 700 : 400
+          }}
+        >
+          Historial
+        </button>
+      </div>
 
-        <div style={{display:'flex', gap:8, alignItems:'center', marginBottom:8}}>
-          <label>PDF <input type="file" accept="application/pdf" onChange={e=> setFile(e.target.files?.[0]||null)} /></label>
-          <label>Tasa cambio (BRL→Gs)
-            <input type="number" value={exchangeRate} onChange={e=> setExchangeRate(Number(e.target.value||0))} style={{width:110, marginLeft:6}}/>
-          </label>
-          <button disabled={!file || busy} onClick={parsePdf}>{busy?'Procesando...':'Leer PDF'}</button>
-          {fileUrl && <a href={fileUrl} target="_blank" rel="noreferrer">Ver PDF</a>}
-        </div>
+      {/* Panel de compra — se mantiene montado, solo se oculta */}
+      <section style={{display: tab==='compra' ? 'block' : 'none'}}>
+          <style>
+            {`
+              .t { table-layout: fixed; width: 100%; border-collapse: collapse; }
+              .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+            `}
+          </style>
+            
+          <section>
+            <h2>Importar Compras (PDF con OCR)</h2>
 
-        {!!lines.length && (
-          <div>
-            <div style={{display:'flex', gap:8, margin:'8px 0'}}>
-              <label>Proveedor <input value={supplier} onChange={e=>setSupplier(e.target.value)} /></label>
-              <label>Factura <input value={invoice} onChange={e=>setInvoice(e.target.value)} /></label>
+            <div style={{display:'flex', gap:8, alignItems:'center', marginBottom:8}}>
+              <label>PDF <input type="file" accept="application/pdf" onChange={e=> setFile(e.target.files?.[0]||null)} /></label>
+              <label>Tasa cambio (BRL→Gs)
+                <input type="number" value={exchangeRate} onChange={e=> setExchangeRate(Number(e.target.value||0))} style={{width:110, marginLeft:6}}/>
+              </label>
+              <button disabled={!file || busy} onClick={parsePdf}>{busy?'Procesando...':'Leer PDF'}</button>
+              {fileUrl && <a href={fileUrl} target="_blank" rel="noreferrer">Ver PDF</a>}
             </div>
 
-            <table style={{width:'100%', borderCollapse:'collapse'}} className="t">
-              <colgroup>
-                <col />
-                <col /* style={{ width: '30ch' }} *//>
-                <col /* style={{ width: '10ch' }} *//>
-                <col />
-                <col />
-                <col /* style={{ width: '15ch' }} */ /> {/* Unit (R$) */}
-                <col /* style={{ width: '15ch' }} */ /> {/* Precio Venta (Gs) */}
-                <col /* style={{ width: '15ch' }} */ /> {/* Unit (Gs) */}
-                <col /* style={{ width: '15ch' }} */ /> {/* Total (Gs) */}
-                <col /* style={{ width: '6ch' }} *//>
-              </colgroup>
-              <thead><tr>
-                <th>Cod</th>
-                <th>Producto</th>
-                <th>Color</th>
-                <th>Talla</th>
-                <th>Qty</th>
-                <th className="num">Unit (R$)</th>
-                <th className="num">Precio Venta (Gs)</th>
-                <th className="num">Unit (Gs)</th>
-                <th className="num">Total (Gs)</th>
-                <th></th>
-              </tr></thead>
-              <tbody>
-                {lines.map((l,i)=>{
-                  const unitGs = l.unitCostRS * (exchangeRate||0)
-                  const lineGs = unitGs * l.qty
-                  return (
-                    <tr key={i}>
-                      <td><input value={l.code} onChange={e=>edit(i,'code', e.target.value)} style={{width:90}}/></td>
-                      <td><input value={l.name} onChange={e=>edit(i,'name', e.target.value)} style={{width:240}}/></td>
-                      <td><input value={l.color} onChange={e=>edit(i,'color', e.target.value)} style={{width:120}}/></td>
-                      <td><input value={l.size}  onChange={e=>edit(i,'size',  e.target.value)} style={{width:80}}/></td>
-                      <td><input type="number" value={l.qty} onChange={e=>edit(i,'qty', e.target.value)} style={{width:80}}/></td>
-                      <td className="num">
-                        {/* <input type="number" value={fmtBRL.format(l.unitCostRS)} onChange={e=>edit(i,'unitCostRS', e.target.value)} style={{width:110}}/> */}
-                        {/* <MoneyInput value={Number(l.unitCostRS||0)} currency="BRL" onChange={(n)=>{ edit(i,'unitCostRS', n); }}
-                          style={{width:120}}/> */}
-                          <MoneyInput value={Number(l.unitCostRS||0)} currency="BRL"
-                          onChange={(n)=>{ edit(i,'unitCostRS', n);
-                            edit(i,'salePriceGs', prettyPriceGs( 2 * n * (exchangeRate||0) )); }}
-                          style={{width:120}}/>
-                        </td>
-                      <td className="num">
-                        {/* <input type="number" value={fmtGs.format(l.salePriceGs||0)} onChange={e=>edit(i,'salePriceGs', e.target.value)} style={{width:110}}/> */}
-                        <MoneyInput value={Number(l.salePriceGs||0)} currency="PYG" onChange={(n)=>edit(i,'salePriceGs', n)} style={{width:130}}/>
-                        </td>
-                      <td style={{textAlign:'right'}} className="num">{fmtGs.format(unitGs)}</td>
-                      <td style={{textAlign:'right'}} className="num">{fmtGs.format(lineGs)}</td>
-                      <td><button onClick={()=>remove(i)}>Quitar</button></td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+            {!!lines.length && (
+              <div>
+                <div style={{display:'flex', gap:8, margin:'8px 0'}}>
+                  <label>Proveedor <input value={supplier} onChange={e=>setSupplier(e.target.value)} /></label>
+                  <label>Factura <input value={invoice} onChange={e=>setInvoice(e.target.value)} /></label>
+                </div>
 
-            <div style={{display:'flex', gap:16, marginTop:10}}>
-              {/* <div><b>Total R$:</b> {totalRS.toFixed(2)}</div>
-              <div><b>Total Gs:</b> {Math.round(totalGs)}</div> */}
-              <div><b>Total R$:</b> {fmtBRL.format(totalRS)}</div>
-              <div><b>Total Gs:</b> {fmtGs.format(totalGs)}</div>
-            </div>
+                <table style={{width:'100%', borderCollapse:'collapse'}} className="t">
+                  <colgroup>
+                    <col />
+                    <col /* style={{ width: '30ch' }} *//>
+                    <col /* style={{ width: '10ch' }} *//>
+                    <col />
+                    <col />
+                    <col /* style={{ width: '15ch' }} */ /> {/* Unit (R$) */}
+                    <col /* style={{ width: '15ch' }} */ /> {/* Precio Venta (Gs) */}
+                    <col /* style={{ width: '15ch' }} */ /> {/* Unit (Gs) */}
+                    <col /* style={{ width: '15ch' }} */ /> {/* Total (Gs) */}
+                    <col /* style={{ width: '6ch' }} *//>
+                  </colgroup>
+                  <thead><tr>
+                    <th>Cod</th>
+                    <th>Producto</th>
+                    <th>Color</th>
+                    <th>Talla</th>
+                    <th>Qty</th>
+                    <th className="num">Unit (R$)</th>
+                    <th className="num">Precio Venta (Gs)</th>
+                    <th className="num">Unit (Gs)</th>
+                    <th className="num">Total (Gs)</th>
+                    <th></th>
+                  </tr></thead>
+                  <tbody>
+                    {lines.map((l,i)=>{
+                      const unitGs = l.unitCostRS * (exchangeRate||0)
+                      const lineGs = unitGs * l.qty
+                      return (
+                        <tr key={i}>
+                          <td><input value={l.code} onChange={e=>edit(i,'code', e.target.value)} style={{width:90}}/></td>
+                          <td><input value={l.name} onChange={e=>edit(i,'name', e.target.value)} style={{width:240}}/></td>
+                          <td><input value={l.color} onChange={e=>edit(i,'color', e.target.value)} style={{width:120}}/></td>
+                          <td><input value={l.size}  onChange={e=>edit(i,'size',  e.target.value)} style={{width:80}}/></td>
+                          <td><input type="number" value={l.qty} onChange={e=>edit(i,'qty', e.target.value)} style={{width:80}}/></td>
+                          <td className="num">
+                            {/* <input type="number" value={fmtBRL.format(l.unitCostRS)} onChange={e=>edit(i,'unitCostRS', e.target.value)} style={{width:110}}/> */}
+                            {/* <MoneyInput value={Number(l.unitCostRS||0)} currency="BRL" onChange={(n)=>{ edit(i,'unitCostRS', n); }}
+                              style={{width:120}}/> */}
+                              <MoneyInput value={Number(l.unitCostRS||0)} currency="BRL"
+                              onChange={(n)=>{ edit(i,'unitCostRS', n);
+                                edit(i,'salePriceGs', prettyPriceGs( 2 * n * (exchangeRate||0) )); }}
+                              style={{width:120}}/>
+                            </td>
+                          <td className="num">
+                            {/* <input type="number" value={fmtGs.format(l.salePriceGs||0)} onChange={e=>edit(i,'salePriceGs', e.target.value)} style={{width:110}}/> */}
+                            <MoneyInput value={Number(l.salePriceGs||0)} currency="PYG" onChange={(n)=>edit(i,'salePriceGs', n)} style={{width:130}}/>
+                            </td>
+                          <td style={{textAlign:'right'}} className="num">{fmtGs.format(unitGs)}</td>
+                          <td style={{textAlign:'right'}} className="num">{fmtGs.format(lineGs)}</td>
+                          <td><button onClick={()=>remove(i)}>Quitar</button></td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
 
-            <div style={{marginTop:10}}>
-              <button onClick={save} disabled={busy}>Guardar compra</button>
-            </div>
-          </div>
-        )}
+                <div style={{display:'flex', gap:16, marginTop:10}}>
+                  {/* <div><b>Total R$:</b> {totalRS.toFixed(2)}</div>
+                  <div><b>Total Gs:</b> {Math.round(totalGs)}</div> */}
+                  <div><b>Total R$:</b> {fmtBRL.format(totalRS)}</div>
+                  <div><b>Total Gs:</b> {fmtGs.format(totalGs)}</div>
+                </div>
+
+                <div style={{marginTop:10}}>
+                  <button onClick={save} disabled={busy}>Guardar compra</button>
+                </div>
+              </div>
+            )}
+          </section>
       </section>
+
+      {/* Panel historial — carga on-demand cuando se selecciona la pestaña */}
+      {tab==='historial' && (
+        <section style={{marginTop:16}}>
+          <Suspense fallback={<div>Cargando historial…</div>}>
+            <PurchaseHistory/>
+          </Suspense>
+        </section>
+      )}
     </>
   )
 }

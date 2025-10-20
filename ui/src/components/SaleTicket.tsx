@@ -1,8 +1,10 @@
 // src/components/SaleTicket.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { GoogleSheetsRepo } from '../storage/GoogleSheetsRepo';
 import type { VariantItem, SaleItem } from '../storage/IRepository';
 import { fmtGs, parseLocaleNumber } from '../utils/money';
+// ⬇️ carga on-demand
+const SalesHistory = lazy(() => import('./SalesHistory'));
 
 const repo = new GoogleSheetsRepo();
 const keyOf = (v:{code:string;color:string;size:string}) => `${v.code}|${v.color}|${v.size}`;
@@ -34,6 +36,8 @@ function MoneyInputGs({
 
 
 export default function SaleTicket(){
+  const [tab, setTab] = useState<'venta'|'historial'>('venta');
+  const [showHistory, setShowHistory] = useState(false);
   const [variants, setVariants] = useState<VariantItem[]>([]);
   const [stock, setStock] = useState<Record<string, number>>({});
   const [cart, setCart] = useState<Record<string, SaleItem>>({});
@@ -399,150 +403,191 @@ useEffect(()=>{
 
 
   return (
-    
-    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
-      {/* STOCK (izquierda) */}
-      <div>
-      <h3>Stock</h3>
-      <div style={{display:'flex', gap:8, marginBottom:8, alignItems:'center'}}>
-        <input
-          placeholder="Filtrar por desc. o código (palabras = AND)"
-          value={filterText}
-          onChange={e=>setFilterText(e.target.value)}
-          style={{flex:1}}
-        />
-        {/* simple select as sort icon substitute */}
-        <select value={sortKey} onChange={e=>setSortKey(e.target.value as any)} title="Ordenar">
-          <option value="desc_asc">desc. asc</option>
-          <option value="desc_desc">desc. desc</option>
-          <option value="code_asc">cód. asc</option>
-          <option value="code_desc">cód. desc</option>
-          <option value="stock_asc">stock asc</option>
-          <option value="stock_desc">stock desc</option>
-        </select>
+    <>
+      {/* Tabs header */}
+      <div role="tablist" style={{display:'flex', gap:8, margin:'12px 0'}}>
+        <button
+          onClick={()=>setTab('venta')}
+          style={{
+            padding:'6px 12px',
+            borderRadius:8,
+            border:'1px solid #ccc',
+            background: tab==='venta' ? '#eee' : '#fff',
+            fontWeight: tab==='venta' ? 700 : 400
+          }}
+        >
+          Venta
+        </button>
+        <button
+          onClick={()=>setTab('historial')}
+          style={{
+            padding:'6px 12px',
+            borderRadius:8,
+            border:'1px solid #ccc',
+            background: tab==='historial' ? '#eee' : '#fff',
+            fontWeight: tab==='historial' ? 700 : 400
+          }}
+        >
+          Historial
+        </button>
       </div>
 
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px,1fr))', gap:8 }}>
-          {visible.map(v=>{
-            const k = keyOf(v);
-            const s = stock[k] ?? v.stock;
-            const disabled = s<=0;
-            return (
-              <button key={k} onClick={()=>!disabled && add(v)}
-                style={{ padding:10, border:'1px solid #ccc', borderRadius:8, textAlign:'left',
-                         cursor: disabled?'not-allowed':'pointer', opacity: disabled?0.5:1 }}>
-                <div style={{ fontWeight:700 }}>{v.code}</div>
-                <div style={{ fontSize:12 }}>{v.name}</div>
-                <div style={{ fontSize:12 }}>{v.size} - {s} - {v.color}</div>
-                <div style={{ fontSize:12, fontWeight:600 }}>Gs {(v.defaultPrice||0).toFixed(0)}</div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* TICKET (derecha) */}
-      <div>
-        <h3>Venta</h3>
-        {/* Client filter input + suggestions */}
-        <div style={{display:'grid', gap:6, marginBottom:6}}>
-          <input
-            placeholder="Buscar cliente (nombre o ID)"
-            value={clientFilter}
-            onChange={e=> setClientFilter(e.target.value)}
-          />
-          {!!clientFilter.trim() && !!clientMatches.length && (
-            <div style={{border:'1px solid #ddd', borderRadius:6, padding:6, maxHeight:140, overflow:'auto'}}>
-              {clientMatches.map((c,i)=>(
-                <div key={i} style={{padding:'4px 6px', cursor:'pointer'}}
-                    onClick={()=>{ setCustName(c.name); setCustId(c.id); setClientFilter(''); setClientMatches([]); }}>
-                  <b>{c.name}</b> — <span style={{opacity:0.8}}>{c.id}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div style={{ display:'flex', gap:8, marginBottom:8 }}>
-          <input placeholder="Cliente (Nombre)*" value={custName} onChange={e=>setCustName(e.target.value)} />
-          <input placeholder="Doc Cliente (ID)*" value={custId} onChange={e=>setCustId(e.target.value)} />
-        </div>
-
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px,1fr))', gap:8, minHeight:120, border:'1px dashed #aaa', borderRadius:8, padding:8 }}>
-          {Object.entries(cart).map(([k,it])=>{
-            return (
-              <button key={k} onClick={()=>remove(k)} style={{ padding:10, border:'1px solid #888', borderRadius:8, textAlign:'left', background:'#fafafa' }}>
-                <div style={{ fontWeight:700 }}>{it.code}</div>
-                <div style={{ fontSize:12 }}>{it.name}</div>
-                <div style={{ fontSize:12 }}>{it.size} - {it.qty} - {it.color}</div>
-                <div style={{ fontSize:12, fontWeight:600 }}>Gs {(it.price).toFixed(0)}</div>
-              </button>
-            );
-          })}
-        </div>
-
-        <div style={{ marginTop:12, display:'grid', gap:6, maxWidth:360 }}>
-          <div>Subtotal: {fmtGs.format(subtotal)} — Total: {fmtGs.format(total)}</div>
-          {/* <div>Subtotal: <b>{subtotal.toFixed(0)} Gs</b></div> */}
-          <div>Descuento total (valor): <input type="number" value={discount} onChange={e=>setDiscount(Number(e.target.value)||0)} style={{ width:120 }} /></div>
-          <div>A pagar: <b>{total.toFixed(0)} Gs</b></div>
-          <div style={{display:'flex',gap:8,margin:'8px 0'}}>
-            <select value={mode} onChange={e=>setMode(e.target.value as any)}>
-              <option value="contado">Contado</option><option value="plazo">A plazo</option>
-            </select>
-            <button onClick={resetPlan} style={{marginLeft:8}}>Reestablecer</button>
-            {mode==='plazo' && (<>
-              <span>Entrega (Gs):</span>
-              {/* <input 
-                type="number"
-                type="text" inputMode="numeric"
-                value={fmtGs.format(down)} 
-                value={down} 
-                onFocus={e=> e.currentTarget.value=String(down)}
-                onBlur={e=> setDown(parseLocaleNumber(e.currentTarget.value,false))} style={{width:120}}/> */}
-                <MoneyInputGs value={down} onChange={setDown} style={{ width: 120 }} />
-              <span>Cuotas:</span><input type="number" value={n} onChange={e=>setN(Number(e.target.value)||0)} style={{width:70}}/>
-              <select value={kind} onChange={e=>setKind(e.target.value as any)}>
-                <option value="mensual">Mensual</option><option value="semanal">Semanal</option>
+      {/* Panel de venta — se mantiene montado, solo se oculta */}
+      <section style={{display: tab==='venta' ? 'block' : 'none'}}>
+<div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+            {/* STOCK (izquierda) */}
+            <div>
+            <h3>Stock</h3>
+            <div style={{display:'flex', gap:8, marginBottom:8, alignItems:'center'}}>
+              <input
+                placeholder="Filtrar por desc. o código (palabras = AND)"
+                value={filterText}
+                onChange={e=>setFilterText(e.target.value)}
+                style={{flex:1}}
+              />
+              {/* simple select as sort icon substitute */}
+              <select value={sortKey} onChange={e=>setSortKey(e.target.value as any)} title="Ordenar">
+                <option value="desc_asc">desc. asc</option>
+                <option value="desc_desc">desc. desc</option>
+                <option value="code_asc">cód. asc</option>
+                <option value="code_desc">cód. desc</option>
+                <option value="stock_asc">stock asc</option>
+                <option value="stock_desc">stock desc</option>
               </select>
-            </>)}
-          </div>
-          {mode==='plazo' && sch.length>0 && (<div style={{marginTop:8}}>
-            <h4>Plan de pagos (editable)</h4>
-            <table><thead><tr><th>#</th><th>Fecha</th><th>Monto</th></tr></thead>
-              <tbody>{sch.map((s,i)=>(<tr key={i}>
-                <td>{s.n}</td>
-                <td><input type="date" value={s.date} onChange={e=>changeSch(i,'date',e.target.value)}/></td>
-                <td>
-                  {/* <input 
-                      type="number"
-                      type="text" inputMode="numeric" 
-                      value={fmtGs.format(s.amount)}
-                      value={s.amount}
-                      onFocus={e=> e.currentTarget.value=String(s.amount)}
-                      onBlur={e=>editCuota(i,'amount', e.currentTarget.value)} style={{width:130}}/> */}
-                    {/* <input
-                      type="text"
-                      inputMode="numeric"
-                      value={fmtGs.format(s.amount)}
-                      onFocus={(e)=> (e.currentTarget.value = String(s.amount))}
-                      onBlur={(e)=> editCuota(i,'amount', e.currentTarget.value)}
-                      style={{ width: 130 }}
-                    /> */}
+            </div>
 
-                    <MoneyInputGs
-                      value={s.amount}
-                      onChange={(n)=> editCuota(i, String(n))}
-                      style={{width:130}}
-                    />
-                </td>
-                <td style={{textAlign:'center'}}>{s.manual?'✔':''}</td>      
-              </tr>))}</tbody>
-            </table>
-          </div>)}
-          <div><button onClick={submit} style={{ padding:'8px 16px', fontWeight:700, borderRadius:8 }}>Registrar venta</button></div>
-        </div>
-      </div>
-    </div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px,1fr))', gap:8 }}>
+                {visible.map(v=>{
+                  const k = keyOf(v);
+                  const s = stock[k] ?? v.stock;
+                  const disabled = s<=0;
+                  return (
+                    <button key={k} onClick={()=>!disabled && add(v)}
+                      style={{ padding:10, border:'1px solid #ccc', borderRadius:8, textAlign:'left',
+                              cursor: disabled?'not-allowed':'pointer', opacity: disabled?0.5:1 }}>
+                      <div style={{ fontWeight:700 }}>{v.code}</div>
+                      <div style={{ fontSize:12 }}>{v.name}</div>
+                      <div style={{ fontSize:12 }}>{v.size} - {s} - {v.color}</div>
+                      <div style={{ fontSize:12, fontWeight:600 }}>Gs {(v.defaultPrice||0).toFixed(0)}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* TICKET (derecha) */}
+            <div>
+              <h3>Venta</h3>
+              {/* Client filter input + suggestions */}
+              <div style={{display:'grid', gap:6, marginBottom:6}}>
+                <input
+                  placeholder="Buscar cliente (nombre o ID)"
+                  value={clientFilter}
+                  onChange={e=> setClientFilter(e.target.value)}
+                />
+                {!!clientFilter.trim() && !!clientMatches.length && (
+                  <div style={{border:'1px solid #ddd', borderRadius:6, padding:6, maxHeight:140, overflow:'auto'}}>
+                    {clientMatches.map((c,i)=>(
+                      <div key={i} style={{padding:'4px 6px', cursor:'pointer'}}
+                          onClick={()=>{ setCustName(c.name); setCustId(c.id); setClientFilter(''); setClientMatches([]); }}>
+                        <b>{c.name}</b> — <span style={{opacity:0.8}}>{c.id}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display:'flex', gap:8, marginBottom:8 }}>
+                <input placeholder="Cliente (Nombre)*" value={custName} onChange={e=>setCustName(e.target.value)} />
+                <input placeholder="Doc Cliente (ID)*" value={custId} onChange={e=>setCustId(e.target.value)} />
+              </div>
+
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px,1fr))', gap:8, minHeight:120, border:'1px dashed #aaa', borderRadius:8, padding:8 }}>
+                {Object.entries(cart).map(([k,it])=>{
+                  return (
+                    <button key={k} onClick={()=>remove(k)} style={{ padding:10, border:'1px solid #888', borderRadius:8, textAlign:'left', background:'#fafafa' }}>
+                      <div style={{ fontWeight:700 }}>{it.code}</div>
+                      <div style={{ fontSize:12 }}>{it.name}</div>
+                      <div style={{ fontSize:12 }}>{it.size} - {it.qty} - {it.color}</div>
+                      <div style={{ fontSize:12, fontWeight:600 }}>Gs {(it.price).toFixed(0)}</div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div style={{ marginTop:12, display:'grid', gap:6, maxWidth:360 }}>
+                <div>Subtotal: {fmtGs.format(subtotal)} — Total: {fmtGs.format(total)}</div>
+                {/* <div>Subtotal: <b>{subtotal.toFixed(0)} Gs</b></div> */}
+                <div>Descuento total (valor): <input type="number" value={discount} onChange={e=>setDiscount(Number(e.target.value)||0)} style={{ width:120 }} /></div>
+                <div>A pagar: <b>{total.toFixed(0)} Gs</b></div>
+                <div style={{display:'flex',gap:8,margin:'8px 0'}}>
+                  <select value={mode} onChange={e=>setMode(e.target.value as any)}>
+                    <option value="contado">Contado</option><option value="plazo">A plazo</option>
+                  </select>
+                  <button onClick={resetPlan} style={{marginLeft:8}}>Reestablecer</button>
+                  {mode==='plazo' && (<>
+                    <span>Entrega (Gs):</span>
+                    {/* <input 
+                      type="number"
+                      type="text" inputMode="numeric"
+                      value={fmtGs.format(down)} 
+                      value={down} 
+                      onFocus={e=> e.currentTarget.value=String(down)}
+                      onBlur={e=> setDown(parseLocaleNumber(e.currentTarget.value,false))} style={{width:120}}/> */}
+                      <MoneyInputGs value={down} onChange={setDown} style={{ width: 120 }} />
+                    <span>Cuotas:</span><input type="number" value={n} onChange={e=>setN(Number(e.target.value)||0)} style={{width:70}}/>
+                    <select value={kind} onChange={e=>setKind(e.target.value as any)}>
+                      <option value="mensual">Mensual</option><option value="semanal">Semanal</option>
+                    </select>
+                  </>)}
+                </div>
+                {mode==='plazo' && sch.length>0 && (<div style={{marginTop:8}}>
+                  <h4>Plan de pagos (editable)</h4>
+                  <table><thead><tr><th>#</th><th>Fecha</th><th>Monto</th></tr></thead>
+                    <tbody>{sch.map((s,i)=>(<tr key={i}>
+                      <td>{s.n}</td>
+                      <td><input type="date" value={s.date} onChange={e=>changeSch(i,'date',e.target.value)}/></td>
+                      <td>
+                        {/* <input 
+                            type="number"
+                            type="text" inputMode="numeric" 
+                            value={fmtGs.format(s.amount)}
+                            value={s.amount}
+                            onFocus={e=> e.currentTarget.value=String(s.amount)}
+                            onBlur={e=>editCuota(i,'amount', e.currentTarget.value)} style={{width:130}}/> */}
+                          {/* <input
+                            type="text"
+                            inputMode="numeric"
+                            value={fmtGs.format(s.amount)}
+                            onFocus={(e)=> (e.currentTarget.value = String(s.amount))}
+                            onBlur={(e)=> editCuota(i,'amount', e.currentTarget.value)}
+                            style={{ width: 130 }}
+                          /> */}
+
+                          <MoneyInputGs
+                            value={s.amount}
+                            onChange={(n)=> editCuota(i, String(n))}
+                            style={{width:130}}
+                          />
+                      </td>
+                      <td style={{textAlign:'center'}}>{s.manual?'✔':''}</td>      
+                    </tr>))}</tbody>
+                  </table>
+                </div>)}
+                <div><button onClick={submit} style={{ padding:'8px 16px', fontWeight:700, borderRadius:8 }}>Registrar venta</button></div>
+              </div>
+            </div>
+          </div>
+      </section>
+
+      {/* Panel historial — carga on-demand cuando se selecciona la pestaña */}
+      {tab==='historial' && (
+        <section style={{marginTop:16}}>
+          <Suspense fallback={<div>Cargando historial…</div>}>
+            <SalesHistory/>
+          </Suspense>
+        </section>
+      )}
+    </>
   );
 }
