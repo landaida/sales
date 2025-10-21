@@ -609,38 +609,24 @@ function listStockFromProductos_(cursor, limit, showWithoutStock, filterText){
   var showZeros = (String(showWithoutStock).toLowerCase() === 'true' || showWithoutStock === true || String(showWithoutStock) === '1');
   const terms = filterText.trim().toUpperCase().split(/\s+/).filter(Boolean);
 
-  // var sh = sheetByName_('Productos'), out=[];
-  // if (sh && sh.getLastRow()>1){
-  //   var rows = sh.getRange(2,1,sh.getLastRow()-1,12).getValues();
-  //   rows.forEach(function(r){
-  //     var code = String(r[0]||'').trim(); if (!code) return;
-  //     out.push({ code:code, name:String(r[1]||code), stock:Number(r[4]||0), defaultPrice:Number(r[2]||r[9]||0), color:String(r[10]), size:String(r[11]) });
-  //   });
-  // }
-  // return { ok:true, items: out };
-
   cursor=Math.max(0,Number(cursor||0)); limit=Math.max(1,Number(limit||5));
   var sh=ensureSheet_('Productos',[]); 
   if(sh.getLastRow()<=1) 
     return ok_({ok:true,items:[],next:null});
 
-  var rows=sh.getRange(2,1,sh.getLastRow()-1,12).getValues();
-  var rowsLength = rows.length
-
-  var out=[], scan=cursor;
-  for(; scan<rows.length && out.length<limit; scan++){
-    var r=rows[scan], stock=Number(r[4]||0), code = String(r[0]||'').trim();
-    if(!code || (!showZeros && stock === 0)) continue; 
+  var {items, next} = _scanFromBottom_({sh, lastCol:12, cursor, limit, pageSize:100, rowHandler:(r, items)=>{
+    var stock=Number(r[4]||0), code = String(r[0]||'').trim();
+    if(!code || (!showZeros && stock === 0)) return; 
     
     var name=String(r[1]||code), defaultPrice=Number(r[2]||r[9]||0), color=String(r[10]), size=String(r[11]);    
     const codeUpper = code.toUpperCase(), nameUpper = name.toUpperCase(), sizeUpper = size.toUpperCase(), colorUpper = color.toUpperCase();
 
     const filtered = !terms || terms.length === 0 || (terms && terms.length > 0 && terms.every(t => codeUpper.includes(t) || nameUpper.includes(t) || sizeUpper.includes(t) || colorUpper.includes(t)))
-    if(!filtered) continue;
-    out.push({ code, name, stock, defaultPrice, color, size});
-  }
-  var next=(scan<rows.length)? scan : null;         // <<-- puntero scan
-  return ok_({ ok:true, items: out, next, showWithoutStock, terms:JSON.stringify(terms), rowsLength });
+    if(!filtered) return;
+    items.push({ code, name, stock, defaultPrice, color, size});    
+  }});
+  // var next=(scan<rows.length)? scan : null;         // <<-- puntero scan
+  return ok_({ ok:true, items, next });
 }
 
 // Pretty-pricing for Guaraníes with slight upward bias near 20k/80k.
@@ -966,3 +952,61 @@ function listSalesHistory_(cursor, limit){
   var next=(scan<rows.length)? scan : null;         // <<-- puntero scan
   return ok_({ ok:true, items: out, next });
 }
+
+/**
+ * Scan desde el FINAL (desc) en ventanas para no cargar toda la hoja.
+ * - cursor: offset ya consumido DESDE EL FINAL (0-based).
+ * - limit : cuantos items devolver en esta llamada (encabezados ya filtrados).
+ * - pageSize: tamaño del bloque que se lee de Sheets en cada iteración.
+ * - lastCol: # de columnas a leer (performance).
+ * - rowHandler(row, items): empuja en items cuando corresponda. Debe retornar void.
+ * Devuelve {items, next}. next = nuevo offset desde el final o null si terminó.
+ */
+function _scanFromBottom_({sh, lastCol, cursor, limit, pageSize, rowHandler}){
+  var lastRow = sh.getLastRow();
+  if (lastRow <= 1) return { items:[], next:null };
+
+  var want = Math.max(1, Number(limit||5));
+  var chunk = Math.max(50, Math.min(Number(pageSize||500), 2000));
+  var items = [];
+
+  // posición de escaneo (incluida) contando desde el final
+  var scan = lastRow - Math.max(0, Number(cursor||0));  // fila 1-based
+
+  while (scan >= 2 && items.length < want){
+    var start = Math.max(2, scan - chunk + 1);
+    var count = scan - start + 1;
+    var values = sh.getRange(start, 1, count, lastCol).getValues();
+
+    var stoppedEarly = false;
+    // iteramos de abajo hacia arriba para mantener DESC sin reverse global
+    for (var i = values.length-1; i>=0 && items.length<want; i--){
+      rowHandler(values[i], items);
+      if (items.length >= want){
+        // siguiente fila pendiente es justo encima de la última procesada
+        scan = start + i - 1; // (1-based)
+        stoppedEarly = true;
+        break;
+      }
+    }
+    // avanzamos el puntero de escaneo hacia arriba
+    if (!stoppedEarly){
+      // Consumimos todo el chunk; seguimos arriba del bloque leído
+      scan = start - 1;
+    }
+  }
+  // Offset 0-based desde el final si aún quedan filas por leer
+  var next = (scan >= 2) ? (lastRow - scan) : null;
+  return { items: items, next: next };
+}
+
+// Al final de Code.gs:
+(function(root){
+  var exportsObj = { _scanFromBottom_: _scanFromBottom_ };
+  if (typeof module !== 'undefined' && module.exports){
+    module.exports = exportsObj;       // Node.js (tests)
+  } else {
+    // Opcional: exponer para depurar en GAS si quieres
+    root.__codeExports__ = exportsObj; // no interfiere con nada
+  }
+})(this);
