@@ -184,8 +184,8 @@ function doGet(e){
   if (a==='variants') return ok_(listVariantsAvailable_(e.parameter.code))
   if (a==='search') return ok_(searchProducts_(e.parameter.q||''))
   if (a==='clients')  return ok_(searchClients_(String(e.parameter.q||'')));
-  // if (a==='stockfast') return ok_(listStockFromProductos_());
-  if (a==='stockfast')        return listStockFromProductos_(e.parameter.cursor||0, e.parameter.limit||5, e.parameter.showWithoutStock, e.parameter.filterText);
+  // if (a==='stockfast') return ok_(listStockFastFromProductos_());
+  if (a==='stockfast')        return listStockFastFromProductos_(e.parameter.cursor||0, e.parameter.limit||5, e.parameter.showWithoutStock, e.parameter.filterText);
   if (a==='purchase_history') return listPurchaseHistory_(e.parameter.cursor||0, e.parameter.limit||5);
   if (a==='purchase_details') return purchaseDetails_(String(e.parameter.factura||''));
   if (a==='cashbox')       return cashboxSummary_();
@@ -298,9 +298,10 @@ function s_(v){ return v==null?'':String(v) }
 function saleTicket_(data){
   var now=new Date(), cust=data.customer||{};
   var cname=String(cust.name||'').trim(), cid=String(cust.id||'').trim();
-  if(!cname||!cid) return ok_({ ok:false, error:'customer required' });
+  if(!cname||!cid) return { ok:false, error:'customer required' };
 
-  var items=data.items||[]; if(!items.length) return ok_({ ok:false, error:'empty items' });
+  upsertClient_(cname, cid)
+  var items=data.items||[]; if(!items.length) return { ok:false, error:'empty items' };
   var discountTotal=Number(data.discountTotal||0);
 
   var sh = ensureSheet_('Ventas',[
@@ -312,7 +313,7 @@ function saleTicket_(data){
 
   var subtotal=0; items.forEach(it=> subtotal += Number(it.price||0)*Number(it.qty||0));
   var total=Math.max(0, subtotal - discountTotal);
-  if(total<=0) return ok_({ok:false,error:'total<=0'});
+  if(total<=0) return {ok:false,error:'total<=0'};
 
   var filas=[];
   items.forEach(function(it){
@@ -342,8 +343,10 @@ function saleTicket_(data){
       for (var i=1;i<=n;i++){ var d=new Date(base); if(kind==='semanal') d.setDate(d.getDate()+i*7); else d.setMonth(d.getMonth()+i);
         addInstallment_(ticketId,cname,i,d, per + (i<=resto?1:0)); }
     }
+    // Materialize AR at client level (increment outstanding)
+    try{ upsertReceivable_(cid, cname, Math.max(0, total - (down||0))); }catch(e){}
   }
-  return ok_({ ok:true, ticketId, subtotal, discountTotal, total, down, aplazo });
+  return { ok:true, ticketId, subtotal, discountTotal, total, down, aplazo };
 }
 
 
@@ -387,26 +390,6 @@ function upsertClient_(name,id){
   return sh.getLastRow();
 }
 
-/** List variants using product-level stock only (Productos!E).
- *  This returns one row per code (no color/size granularity) and is meant for performance in the button grid. */
-// function listStockFromProductos_(){
-//   var sh = sheetByName_('Productos');
-//   var out=[];
-//   if (sh && sh.getLastRow()>1){
-//     var rows = sh.getRange(2,1,Math.max(0,sh.getLastRow()-1),10).getValues(); // A..J
-//     rows.forEach(function(r){
-//       var code = String(r[0]||'').trim();
-//       if (!code) return;
-//       out.push({
-//         code: code,
-//         name: String(r[1]||code),
-//         stock: Number(r[4]||0),
-//         defaultPrice: Number(r[2]||r[9]||0) // C=PrecioVenta, J=PrecioSugerido
-//       });
-//     });
-//   }
-//   return { ok:true, items: out };
-// }
 
 
 /** Ensure 'ACobrar' sheet with this header. */
@@ -605,7 +588,7 @@ function purchaseDetails_(factura){
 
 
 /** One item per product code from Productos!E (fast) */
-function listStockFromProductos_(cursor, limit, showWithoutStock, filterText){
+function listStockFastFromProductos_(cursor, limit, showWithoutStock, filterText){
   var showZeros = (String(showWithoutStock).toLowerCase() === 'true' || showWithoutStock === true || String(showWithoutStock) === '1');
   const terms = filterText.trim().toUpperCase().split(/\s+/).filter(Boolean);
 
@@ -673,29 +656,50 @@ function ensureCaja_(){
 }
 
 /** Caja con metadatos opcionales: subtotal, descuento, entrega, aPlazo */
+// function addCajaMov_(tipo, ref, descr, cliente, proveedor, ingreso, egreso, meta){
+//   var sh = ensureCaja_();
+//   var row = [ new Date(), String(tipo||''), String(ref||''), String(descr||''),
+//     String(cliente||''), String(proveedor||''), Number(ingreso||0), Number(egreso||0) ];
+//   if (meta){
+//     row.push(Number(meta.subtotal||0), Number(meta.descuento||0), Number(meta.entrega||0), Number(meta.aplazo||0));
+//   }
+//   sh.appendRow(row);
+// }
+
 function addCajaMov_(tipo, ref, descr, cliente, proveedor, ingreso, egreso, meta){
-  var sh = ensureCaja_();
-  var row = [ new Date(), String(tipo||''), String(ref||''), String(descr||''),
-    String(cliente||''), String(proveedor||''), Number(ingreso||0), Number(egreso||0) ];
-  if (meta){
-    row.push(Number(meta.subtotal||0), Number(meta.descuento||0), Number(meta.entrega||0), Number(meta.aplazo||0));
-  }
-  sh.appendRow(row);
+  // Keep original behavior + running balance + monthly mirror
+  cajaEnsureExtended_();
+  return cajaAppendWithBalance_(tipo, ref, descr, cliente, proveedor, ingreso, egreso, meta);
 }
 
+// function cashboxSummary_(){
+//   var caja = sheetByName_('Caja'), ac = sheetByName_('ACobrar');
+//   var in_ = 0, out_ = 0, porCobrar = 0;
+//   if (caja && caja.getLastRow()>1){
+//     caja.getRange(2,1,caja.getLastRow()-1,8).getValues()
+//       .forEach(r=>{ in_+=Number(r[6]||0); out_+=Number(r[7]||0); });
+//   }
+//   if (ac && ac.getLastRow()>1){
+//     ac.getRange(2,1,ac.getLastRow()-1,7).getValues()
+//       .forEach(r=>{ if(String(r[5]||'pendiente').toLowerCase()!=='pagado') porCobrar+=Number(r[4]||0); });
+//   }
+//   return ok_({ ok:true, cashOnHand: in_-out_, receivablesTotal: porCobrar });
+// }
 function cashboxSummary_(){
-  var caja = sheetByName_('Caja'), ac = sheetByName_('ACobrar');
-  var in_ = 0, out_ = 0, porCobrar = 0;
-  if (caja && caja.getLastRow()>1){
-    caja.getRange(2,1,caja.getLastRow()-1,8).getValues()
-      .forEach(r=>{ in_+=Number(r[6]||0); out_+=Number(r[7]||0); });
+  cajaEnsureExtended_();
+  var sh = SpreadsheetApp.getActive().getSheetByName('Caja');
+  var cashOnHand = 0;
+  if (sh && sh.getLastRow()>1){
+    cashOnHand = Number(sh.getRange(sh.getLastRow(), 13).getValue()||0); // BalanceAfterGs
   }
-  if (ac && ac.getLastRow()>1){
-    ac.getRange(2,1,ac.getLastRow()-1,7).getValues()
-      .forEach(r=>{ if(String(r[5]||'pendiente').toLowerCase()!=='pagado') porCobrar+=Number(r[4]||0); });
+  var rec = SpreadsheetApp.getActive().getSheetByName('Receivables'), ar=0;
+  if (rec && rec.getLastRow()>1){
+    var vals = rec.getRange(2,3,rec.getLastRow()-1,1).getValues();
+    for (var i=0;i<vals.length;i++) ar += Number(vals[i][0]||0);
   }
-  return ok_({ ok:true, cashOnHand: in_-out_, receivablesTotal: porCobrar });
+  return ok_({ ok:true, cashOnHand: cashOnHand, receivablesTotal: ar });
 }
+
 function cashboxMoves_(cursor, limit){
   cursor=Math.max(0,Number(cursor||0)); limit=Math.max(1,Number(limit||10));
   var sh=sheetByName_('Caja'); 
@@ -781,7 +785,7 @@ function receivablesPending_(cursor, limit){
 
   // var out=[], c=0; 
   let {items, next} = _scanFromBottom_({sh, lastCol:7, cursor, limit, pageSize:100, rowHandler:(r, items)=>{
-    if(String(r[5]||'pendiente').toLowerCase()!=='pagado') return;
+    if(String(r[5]||'pendiente').toLowerCase()!=='pendiente') return;
   // for(var i=cursor;i<rows.length && out.length<limit;i++){ 
     // var r=rows[i];
     items.push({ ticketId:r[0], cliente:r[1], cuota:r[2], fecha:r[3], monto:Number(r[4]||0), estado:r[5], fechaCuota:r[3] }); 
@@ -810,6 +814,8 @@ function receivablePay_(ticketId, cuotaN, amount, note){
 
   ensureCobros_().appendRow([ new Date(), ticketId, cliente, pago, String(note||'parcial') ]);
   addCajaMov_('cobro', ticketId, 'Cobro cuota '+cuotaN, cliente, '', pago, 0);
+  // Materialize AR decrement
+  try{ upsertReceivable_(cliId||cliente, cliente, -pago); }catch(e){}
   return ok_({ ok:true });
 }
 

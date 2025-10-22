@@ -16,7 +16,7 @@ export default function StockView(){
     if(busy) return; 
     setBusy(true);
     const cur = reset ? 0 : (cursor||0);
-    const r = await repo.listStockFast(cur, 5, showWithoutStock, filterText);
+    const r = await repo.listStockFast(cur, 10, showWithoutStock, filterText);
     if (reset) setItems(r.items||[]);
     else       setItems(prev=>[...prev, ...(r.items||[])]);
     setCursor(r.next);

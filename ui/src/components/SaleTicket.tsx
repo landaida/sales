@@ -36,6 +36,13 @@ function MoneyInputGs({
 
 
 export default function SaleTicket(){
+  const [cursor,setCursor]=React.useState<number|null>(0); 
+  const [busy,setBusy]=React.useState(false);
+
+  // NEW: filter + sort state
+  const [filterText, setFilterText] = useState('');
+  const [sortKey, setSortKey] = useState<'code_asc'|'code_desc'|'desc_asc'|'desc_desc'|'stock_asc'|'stock_desc'>('desc_asc');
+
   const [tab, setTab] = useState<'venta'|'historial'>('venta');
   const [showHistory, setShowHistory] = useState(false);
   const [variants, setVariants] = useState<VariantItem[]>([]);
@@ -45,7 +52,6 @@ export default function SaleTicket(){
   const [custId,   setCustId]   = useState('');
   
   const [discount, setDiscount] = useState<number>(0);
-  // const [down,setDown]=useState(0)
   const [down, setDown] = useState<number>(0);
 
   const [items,setItems]=useState<Item[]>([{code:'30262',name:'TOP',qty:1,price:190000}])
@@ -55,28 +61,90 @@ export default function SaleTicket(){
   const [sch,setSch]=useState<Sch[]>([])
   const [touch,setTouch]=useState(0)               // invalidador de recálculo
 
+  // ---- Reset de ticket (sin tocar la lista/paginación de stock) ----
+  function resetTicket(){
+    // Cliente
+    setCustName('');
+    setCustId('');
+    setClientFilter('');
+    setClientMatches([]);
+
+    // Carrito y totales
+    setCart({});
+    setDiscount(0);
+
+    // Crédito / plan
+    setMode('contado');
+    setKind('mensual');
+    setN(0);
+    setDown(0);
+    setSch([]);
+    setTouch(t => t + 1); // dispara recálculo si tenés efectos dependientes
+
+    // Si usás estos nuevos (por si los dejas en el file):
+    // setDownPayment(0);
+    // setInstallments([]);
+  }
+
+  // async function loadStock(reset=false) {
+  //   // if(busy||cursor===null) return; 
+  //   if(busy) return; 
+  //   setBusy(true);
+  //   const cur = reset ? 0 : (cursor||0);
+  //   const r = await repo.listStockFast(cur, 10, false, filterText);
+  //   if (reset) setVariants(r.items||[]);
+  //   else       setVariants(prev=>[...prev, ...(r.items||[])]);
+
+  //   const m:Record<string,number> = {};
+  //   variants.forEach(v=> m[`${v.code}|${v.color}|${v.size}`] = v.stock);
+  //   setStock(m);
+
+  //   setCursor(r.next);
+  //   setBusy(false);
+  // }
+
+  async function loadStock(reset=false) {
+    if (busy) return;
+    setBusy(true);
+
+    const cur = reset ? 0 : (cursor || 0);
+    const r = await repo.listStockFast(cur, 10, false, filterText);
+
+    // Actualiza lista
+    if (reset) setVariants(r.items || []);
+    else       setVariants(prev => [...prev, ...(r.items || [])]);
+
+    // Construye el mapa de stock desde el resultado NUEVO
+    const m:Record<string,number> = {};
+    (r.items || []).forEach(v => { m[keyOf(v)] = v.stock; });
+    setStock(prev => reset ? m : { ...prev, ...m });
+
+    setCursor(r.next);
+    setBusy(false);
+  }
+
   // Load variants with stock
   useEffect(()=>{
-    // repo.listVariants().then(r=>{
+    loadStock(true)
+    // repo.listStockFast().then(r=>{
     //   if (!r.ok) return;
-    //   setVariants(r.items);
-    //   const m: Record<string, number> = {};
-    //   r.items.forEach(v=> m[keyOf(v)] = v.stock);
+    //   // Adapt the shape to button grid (no color/size granularity).
+    //   // We'll display one button per code with its stock and price.
+    //   const items = r.items.map((it:any)=>({
+    //     code: it.code, name: it.name, color: it.color, size: it.size, stock: it.stock, defaultPrice: it.defaultPrice
+    //   }));
+    //   setVariants(items);
+    //   const m:Record<string,number> = {};
+    //   items.forEach(v=> m[`${v.code}|${v.color}|${v.size}`] = v.stock);
     //   setStock(m);
     // });
-    repo.listStockFast().then(r=>{
-      if (!r.ok) return;
-      // Adapt the shape to button grid (no color/size granularity).
-      // We'll display one button per code with its stock and price.
-      const items = r.items.map((it:any)=>({
-        code: it.code, name: it.name, color: it.color, size: it.size, stock: it.stock, defaultPrice: it.defaultPrice
-      }));
-      setVariants(items);
-      const m:Record<string,number> = {};
-      items.forEach(v=> m[`${v.code}|${v.color}|${v.size}`] = v.stock);
-      setStock(m);
-    });
   },[]);
+
+  useEffect(()=>{
+    const t = setTimeout(()=> loadStock(true), 600)
+    return ()=> clearTimeout(t)
+  // }, [stock, filterText, sortKey])
+  }, [filterText])
 
   // Client filter & suggestions
   const [clientFilter, setClientFilter] = useState('');
@@ -91,24 +159,7 @@ export default function SaleTicket(){
   const [downPayment,setDownPayment]=useState<number>(0);
   type Cuota = { n:number; fecha:string; monto:number };
   const [installments, setInstallments] = useState<Cuota[]>([]);
-
-
-
   
-  function regenPlan(total:number, down:number, kind:'mensual'|'semanal', n:number){
-    const resto = Math.max(0, total - (down||0));
-    const per   = n>0 ? Math.round(resto / n) : 0;
-    const base  = new Date();
-    const next:Cuota[] = [];
-    for(let i=1;i<=n;i++){
-      const d = new Date(base);
-      if(kind==='semanal') d.setDate(d.getDate()+i*7); else d.setMonth(d.getMonth()+i);
-      next.push({ n:i, fecha: d.toISOString().slice(0,10), monto: per });
-    }
-    setInstallments(next);
-  }
-
-
   // Left click => move 1 unit to ticket
   function add(v: VariantItem){
     const k = keyOf(v);
@@ -136,46 +187,13 @@ export default function SaleTicket(){
     setStock(prev=> ({ ...prev, [k]: (prev[k]??0)+1 }));
   }
 
-  // const subtotal = useMemo(()=> Object.values(cart)
-  //   .reduce((acc,it)=> acc + it.qty*it.price, 0), [cart]);
-  // const total = Math.max(0, subtotal - (discount||0));
-
   const subtotal = useMemo(()=> {
     return Object.values(cart).reduce((sum,it)=> sum + (Number(it.qty||0) * Number(it.price||0)), 0);
   }, [cart]);
   const total = Math.max(0, Number(subtotal) - Number(discount||0));
   
-    // Recalcular plan respetando cuotas manuales
-  // function recalcPlan(respectManual:boolean){
-  //   if (mode!=='plazo'){ setSch([]); return; }
-  //   const base = new Date();
-  //   // slots base con fechas
-  //   let next:Sch[] = Array.from({length: Math.max(0,n)}, (_,i)=>{
-  //     const d = new Date(base);
-  //     if(kind==='semanal') d.setDate(d.getDate()+(i+1)*7); else d.setMonth(d.getMonth()+(i+1));
-  //     const exist = sch[i];
-  //     return { n:i+1, date: exist?.date || d.toISOString().slice(0,10), amount: 0, manual: respectManual ? exist?.manual : false };
-  //   });
-  //   // reset manual si no respetamos
-  //   if (!respectManual) next = next.map(s=> ({...s, manual:false}));
 
-  //   // suma manual
-  //   const manualSum = next.reduce((acc,slot,i)=> acc + (slot.manual ? (sch[i]?.amount||0) : 0), 0);
-  //   // repartir resto entre no-manuales
-  //   const restante = Math.max(0, total - (down||0) - manualSum);
-  //   const libresIdx = next.map((s,i)=> s.manual? -1 : i).filter(i=> i>=0);
-  //   const m = libresIdx.length;
-  //   if (m>0){
-  //     const baseVal = Math.floor(restante / m);
-  //     let resto = restante - baseVal*m;
-  //     libresIdx.forEach((i,idx)=>{ next[i].amount = baseVal + (idx < resto ? 1 : 0); });
-  //   }
-  //   // reinyectar manuales
-  //   next = next.map((s,i)=> s.manual ? ({...s, amount: sch[i]?.amount||0}) : s);
-  //   setSch(next);
-  // }
-
-  function recalcPlan(respectManual: boolean){
+function recalcPlan(respectManual: boolean){
   if (mode !== 'plazo'){ setSch([]); return; }
 
   const base = new Date();
@@ -203,88 +221,31 @@ export default function SaleTicket(){
 }
 
 
-  // recalcular plan cuando cambian entradas
-  // useEffect(()=>{
-  //   if (mode!=='plazo'){ setSch([]); return; }
-  //   const rest = Math.max(0, total - (down||0));
-  //   const per  = n>0 ? rest/n : 0;
-  //   const t = new Date(), arr:Sch[]=[];
-  //   for(let i=1;i<=n;i++){
-  //     const d = new Date(t);
-  //     if(kind==='semanal') d.setDate(d.getDate()+i*7); else d.setMonth(d.getMonth()+i);
-  //     arr.push({ n:i, date:d.toISOString().slice(0,10), amount:per });
-  //   }
-  //   setSch(arr);
-  // }, [mode, down, n, kind, total]);
 
-    // triggers de recálculo
+  // triggers de recálculo
   useEffect(()=>{ recalcPlan(true) }, [mode, down, n, kind, total, touch])
 
-    // Editar cuota: bloquea esa cuota y redistribuye el resto
-  // function editCuota(i:number, field:'date'|'amount', raw:string){
-  //   setSch(prev=>{
-  //     const copy = prev.map((x)=> ({...x}));
-  //     if (field==='date'){ copy[i].date = raw; return copy; }
-  //     const val = parseLocaleNumber(raw,false);
-  //     copy[i].amount = val;
-  //     copy[i].manual = true;
-  //     // redistribuir no-manuales
-  //     const manualSum = copy.reduce((acc,x)=> acc + (x.manual? x.amount:0), 0);
-  //     const restante = Math.max(0, total - (down||0) - manualSum);
-  //     const libresIdx = copy.map((s,ix)=> s.manual? -1 : ix).filter(ix=> ix>=0);
-  //     const m = libresIdx.length;
-  //     if (m>0){
-  //       const baseVal = Math.floor(restante / m);
-  //       let resto = restante - baseVal*m;
-  //       libresIdx.forEach((ix,idx)=>{ copy[ix].amount = baseVal + (idx < resto ? 1 : 0); });
-  //     }
-  //     return copy;
-  //   });
-  // }
 
-//   function editCuota(i:number, field:'date'|'amount', raw:string){
-//   setSch(prev => {
-//     const copy = prev.map(x => ({ ...x }));
-//     if (field === 'date'){ copy[i].date = raw; return copy; }
+  function editCuota(i:number, raw:string){
+    setSch(prev=>{
+      const copy = prev.map(x=> ({...x}));
+      const val  = parseLocaleNumber(raw,false);
+      if (!copy[i]) copy[i] = { n:i+1, date:new Date().toISOString().slice(0,10), amount:0 };
+      copy[i].amount = val;
+      copy[i].manual = true;
 
-//     // amount:
-//     const val = parseLocaleNumber(raw, false);
-//     copy[i].amount = val;
-//     copy[i].manual = true;
+      const manualSum = copy.reduce((a,x)=> a + (x.manual ? x.amount : 0), 0);
+      const restante  = Math.max(0, total - (down||0) - manualSum);
+      const libres    = copy.map((s,ix)=> s.manual? -1 : ix).filter(ix=> ix>=0);
 
-//     // Repartir restante entre no-manuales
-//     const manualSum = copy.reduce((acc, x) => acc + (x.manual ? x.amount : 0), 0);
-//     const restante = Math.max(0, total - (down || 0) - manualSum);
-//     const libres = copy.map((s, ix) => (s.manual ? -1 : ix)).filter(ix => ix >= 0);
-//     if (libres.length > 0){
-//       const baseVal = Math.floor(restante / libres.length);
-//       let resto = restante - baseVal * libres.length;
-//       libres.forEach((ix, idx) => { copy[ix].amount = baseVal + (idx < resto ? 1 : 0); });
-//     }
-//     return copy;
-//   });
-// }
-
-function editCuota(i:number, raw:string){
-  setSch(prev=>{
-    const copy = prev.map(x=> ({...x}));
-    const val  = parseLocaleNumber(raw,false);
-    if (!copy[i]) copy[i] = { n:i+1, date:new Date().toISOString().slice(0,10), amount:0 };
-    copy[i].amount = val;
-    copy[i].manual = true;
-
-    const manualSum = copy.reduce((a,x)=> a + (x.manual ? x.amount : 0), 0);
-    const restante  = Math.max(0, total - (down||0) - manualSum);
-    const libres    = copy.map((s,ix)=> s.manual? -1 : ix).filter(ix=> ix>=0);
-
-    if (libres.length>0){
-      const baseVal = Math.floor(restante/libres.length);
-      let resto = restante - baseVal*libres.length;
-      libres.forEach((ix,idx)=>{ copy[ix].amount = baseVal + (idx<resto ? 1 : 0); });
-    }
-    return copy;
-  });
-}
+      if (libres.length>0){
+        const baseVal = Math.floor(restante/libres.length);
+        let resto = restante - baseVal*libres.length;
+        libres.forEach((ix,idx)=>{ copy[ix].amount = baseVal + (idx<resto ? 1 : 0); });
+      }
+      return copy;
+    });
+  }
 
 
   // Reset manual & recalcular todo
@@ -299,9 +260,6 @@ function editCuota(i:number, raw:string){
     setSch(prev => prev.map((s,ix)=> ix===i ? {...s, [field]: field==='amount' ? parseLocaleNumber(v,false) : v } : s));
   }
 
-  // useEffect(()=>{
-  //    if(paymentMode==='plazo' && Number(numCuotas ?? "")>0) regenPlan(total, downPayment, creditKind, Number(numCuotas)); 
-  // },[paymentMode, creditKind, numCuotas, total, downPayment]);
 
   async function submit(){
     if (!custName.trim() || !custId.trim()){
@@ -328,22 +286,22 @@ function editCuota(i:number, raw:string){
     if (res.ok){
       alert(`Venta OK. Ticket ${res.ticketId}. Total ${res.total}`);
       // Reset ticket y refrescar stock desde el backend
-      setCart({});
-      const r = await repo.listVariants();
-      if (r.ok){
-        setVariants(r.items);
-        const m:Record<string,number> = {};
-        r.items.forEach(v=> m[keyOf(v)] = v.stock);
-        setStock(m);
-      }
+      // setCart({});
+      // const r = await repo.listVariants();
+      // if (r.ok){
+      //   setVariants(r.items);
+      //   const m:Record<string,number> = {};
+      //   r.items.forEach(v=> m[keyOf(v)] = v.stock);
+      //   setStock(m);
+      // }
+      resetTicket()
+      loadStock(true)
     } else {
       alert('Error al registrar la venta');
     }
   }
 
-  // NEW: filter + sort state
-const [filterText, setFilterText] = useState('');
-const [sortKey, setSortKey] = useState<'code_asc'|'code_desc'|'desc_asc'|'desc_desc'|'stock_asc'|'stock_desc'>('desc_asc');
+
 
 // Utility: split by spaces and check AND contains over code/name
 function matchVariant(v: VariantItem, terms: string[]): boolean {
@@ -358,27 +316,29 @@ function matchVariant(v: VariantItem, terms: string[]): boolean {
 const codesInCart = new Set(Object.values(cart).map(it => it.code));
 
 // NEW: build visible list based on filter + sort
-const visible = useMemo(()=>{
-  const terms = filterText.trim().toUpperCase().split(/\s+/).filter(Boolean);
-  let arr = variants.filter(v => {
-    const inCart = codesInCart.has(v.code);
-    const s = stock[keyOf(v)] ?? v.stock;
-    if (!inCart && s<=0) return false;     // <<--- oculta stock 0 si no está en venta
-    if ((stock[keyOf(v)] ?? v.stock) < 0) return false;  // safeguard
-    if (!terms.length) return true;
-    return matchVariant(v, terms);
-  });
+// const visible = useMemo(()=>{
+//   const terms = filterText.trim().toUpperCase().split(/\s+/).filter(Boolean);
+//   let arr = variants.filter(v => {
+//     const inCart = codesInCart.has(v.code);
+//     const s = stock[keyOf(v)] ?? v.stock;
+//     if (!inCart && s<=0) return false;     // <<--- oculta stock 0 si no está en venta
+//     if ((stock[keyOf(v)] ?? v.stock) < 0) return false;  // safeguard
+//     if (!terms.length) return true;
+//     return matchVariant(v, terms);
+//   });
 
-  switch (sortKey) {
-    case 'code_asc':   arr.sort((a,b)=> String(a.code).localeCompare(String(b.code))); break;
-    case 'code_desc':  arr.sort((a,b)=> String(b.code).localeCompare(String(a.code))); break;
-    case 'desc_asc':   arr.sort((a,b)=> String(a.name).localeCompare(String(b.name))); break;
-    case 'desc_desc':  arr.sort((a,b)=> String(b.name).localeCompare(String(a.name))); break;
-    case 'stock_asc':  arr.sort((a,b)=> (stock[keyOf(a)] ?? a.stock) - (stock[keyOf(b)] ?? b.stock)); break;
-    case 'stock_desc': arr.sort((a,b)=> (stock[keyOf(b)] ?? b.stock) - (stock[keyOf(a)] ?? a.stock)); break;
-  }
-  return arr;
-}, [variants, stock, filterText, sortKey]);
+//   switch (sortKey) {
+//     case 'code_asc':   arr.sort((a,b)=> String(a.code).localeCompare(String(b.code))); break;
+//     case 'code_desc':  arr.sort((a,b)=> String(b.code).localeCompare(String(a.code))); break;
+//     case 'desc_asc':   arr.sort((a,b)=> String(a.name).localeCompare(String(b.name))); break;
+//     case 'desc_desc':  arr.sort((a,b)=> String(b.name).localeCompare(String(a.name))); break;
+//     case 'stock_asc':  arr.sort((a,b)=> (stock[keyOf(a)] ?? a.stock) - (stock[keyOf(b)] ?? b.stock)); break;
+//     case 'stock_desc': arr.sort((a,b)=> (stock[keyOf(b)] ?? b.stock) - (stock[keyOf(a)] ?? a.stock)); break;
+//   }
+//   return arr;
+// }, [variants, stock, filterText, sortKey]);
+
+
 
 
 
@@ -455,9 +415,11 @@ useEffect(()=>{
                 <option value="stock_desc">stock desc</option>
               </select>
             </div>
-
+            <div style={{display:'flex', gap:12, marginBottom:8, alignItems:'right'}}>
+              {cursor!==null && <button onClick={()=>loadStock(false)} disabled={busy} style={{marginTop:8, marginLeft: 'auto' }}>{busy?'Cargando...':'Cargar más'}</button>}
+            </div>
               <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px,1fr))', gap:8 }}>
-                {visible.map(v=>{
+                {variants.map(v=>{
                   const k = keyOf(v);
                   const s = stock[k] ?? v.stock;
                   const disabled = s<=0;
