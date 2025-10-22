@@ -1,8 +1,0 @@
-*.zip
-temp/
-ui/dist/
-.npmrc
-bkp/
-**/node_modules/**
-combined.txt
-.vscode/
