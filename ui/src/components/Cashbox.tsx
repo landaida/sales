@@ -12,13 +12,18 @@ export default function Cashbox(){
   const [cursorAr,setCursorAr]=React.useState<number|null>(0); 
   const [busyAr,setBusyAr]=React.useState(false);
   const [ar,setAr]=React.useState<any[]>([]); const [who,setWho]=React.useState<string>(''); const [rows,setRows]=React.useState<any[]>([]);
-  React.useEffect(()=>{ (async()=>{ 
-    setSum(await repo.cashbox()); 
+  React.useEffect(()=>{ (async()=>{
     moreMoves()
     moreACobrarByClient()
+    setSum(await repo.cashbox());
   })() },[]);
-  async function moreMoves(){ if(busy||cursor===null) return; setBusy(true); const r=await repo.cashboxMoves(cursor,5); setItems(p=>[...p,...(r.items||[])]); setCursor(r.next); setBusy(false) }
-  async function moreACobrarByClient(){ if(busyAr||cursorAr===null) return; setBusyAr(true); const r=await repo.arByClient(cursorAr,5); setAr(r.items||[]); setCursorAr(r.next); setBusyAr(false) }
+  async function moreMoves(){ if(busy||cursor===null) return; setBusy(true); 
+    const r = await withOverlay(repo.cashboxMoves(cursor,5),'Cargando...')
+
+    setItems(p=>[...p,...(r.items||[])]); setCursor(r.next); setBusy(false) }
+  async function moreACobrarByClient(){ if(busyAr||cursorAr===null) return; setBusyAr(true); 
+    const r = await withOverlay(repo.arByClient(cursorAr,5),'Cargando...')
+    setAr(r.items||[]); setCursorAr(r.next); setBusyAr(false) }
 
   async function open(c:string){ setWho(c); const r=await repo.arDetails(c); setRows(r.items||[]) }
 

@@ -1,14 +1,22 @@
 import React from 'react'
 import { fmtGs, parseLocaleNumber } from '../utils/money'
 import { useOverlay } from '../overlay/OverlayContext';
+import { GoogleSheetsRepo } from '../storage/GoogleSheetsRepo';
 
+const repo = new GoogleSheetsRepo();
 
 export default function CashIncome(){
   const { withOverlay } = useOverlay();
     // búsqueda en Clientes
     const [q,setQ] = React.useState(''); const [sugg,setSugg] = React.useState<{name:string;id:string}[]>([]);
-    React.useEffect(()=>{ const t=setTimeout(async()=>{ const qs=q.trim(); if(!qs){ setSugg([]); return; }
-        const r=await fetch(`/gsapi/exec?action=clients&q=${encodeURIComponent(qs)}`).then(r=>r.json());
+    React.useEffect(()=>{ 
+      const t=setTimeout(async()=>{ 
+        const qs=q.trim(); 
+        if(!qs){ 
+          setSugg([]); 
+          return; 
+        }
+        const r = await repo.searchClients(q);
         setSugg(r?.items||[]); },250); return ()=>clearTimeout(t);
     },[q]);
   const [person,setPerson]=React.useState('')
@@ -21,17 +29,19 @@ export default function CashIncome(){
   async function submit(){
     const amount = parseLocaleNumber(amountText,false)
     if(!person.trim() || amount<=0) return alert('Persona y monto obligatorios')
-    const r = await fetch('/gsapi/exec', {
-      method:'POST',
-      body: JSON.stringify({ action:'cash_income', person, personId, descr, amount, numCuotas:n, kind })
-    }).then(r=>r.json())
+    const r = await withOverlay(repo.cashIncomeSubmit(person, personId, descr, amount, n, kind),'Procesando...')
+    load(true)
     alert(r.ok?'Ingreso registrado':'Error')
   }
 
   const [items,setItems]=React.useState<any[]>([]), [cursor,setCursor]=React.useState<number|null>(0), [busy,setBusy]=React.useState(false);
-    async function load(){ if(busy||cursor===null) return; setBusy(true);
-    const r = await fetch(`/gsapi/exec?action=cash_income_history&cursor=${cursor}&limit=5`).then(r=>r.json());
-    if(r?.ok){ setItems(p=>[...p,...(r.items||[])]); setCursor(r.next); } setBusy(false);
+    async function load(reset:boolean=false){ if(!reset && (busy||cursor===null)) return; setBusy(true);
+    const r = await withOverlay(repo.cashIncomeHistory(cursor,5),'Cargando...')
+    if(r?.ok){ 
+      reset ? setItems((r.items||[])) : setItems(p=>[...p,...(r.items||[])]); 
+      setCursor(r.next); 
+    } 
+      setBusy(false);
     }
     React.useEffect(()=>{ load() },[]);
 

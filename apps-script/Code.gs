@@ -888,7 +888,7 @@ function cashIncomeHistory_(cursor, limit){
   // for(var i=cursor;i<rows.length && out.length<limit;i++){
   let {items, next} = _scanFromBottom_({sh, lastCol:16, cursor, limit, pageSize:100, rowHandler:(r, items)=>{
     // var r=rows[i];
-    if(String(r[1])!=='ingreso' || String(r[15])!=='ajustado') return;
+    if(String(r[1])!=='ingreso' || String(r[14])==='ajustado') return;
     items.push({ date:r[0], ref:r[2], descr:r[3], person:r[4], amount:Number(r[6]||0) });
     // c++;
   // }

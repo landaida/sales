@@ -72,7 +72,8 @@ export default function PurchaseOCRUpload(){
     try{
       // debugger
       const b64 = await file.arrayBuffer().then(b=> btoa(String.fromCharCode(...new Uint8Array(b))))
-      const res = await repo.purchaseParse({ filename:file.name, b64 })
+      const res = await withOverlay(repo.purchaseParse({ filename:file.name, b64 }),'Cargando...')
+
       if(!res?.ok) throw new Error(res?.error||'parse failed')
       // const ln = (res.items||[]).map((it:any)=> ({...it, salePriceGs: Number((it.unitCostRS||0) * (exchangeRate||0)) }));
       // const ln = (res.items||[]).map((it:any)=> ({
@@ -97,10 +98,11 @@ export default function PurchaseOCRUpload(){
     if(!lines.length) return alert('Nada para guardar')
     setBusy(true)
     try{
-      const res = await repo.purchaseSave({
+      const res = await withOverlay(repo.purchaseSave({
         supplier, invoice, fileId, exchangeRate,
         items: lines.map(l=> ({...l, salePriceGs: Number(l.salePriceGs||0) }))
-      })
+      }),'Procesando...')
+
       if(!res?.ok) throw new Error(res?.error||'save failed')
       alert(`Compra guardada (${res.saved} ítems). PDF: ${fileUrl||''}`)
       setLines([]); setFile(null)

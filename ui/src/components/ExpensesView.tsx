@@ -18,19 +18,22 @@ export default function ExpensesView(){
     repo.listExpenseTypes().then(r=> setTypes(r.items||[])) 
     load(); 
   },[])
-  async function submit(){ const ok = await repo.addExpense(Number(amount||0), descr, note); alert(ok?.ok?'Gasto registrado':'Error') }
+  async function submit(){
+    const ok = await withOverlay(repo.addExpense(Number(amount||0), descr, note),'Procesando...')
+    load(true)
+    setAmount("0")
+    setDescr("")
+    setNote("")
+    alert(ok?.ok?'Gasto registrado':'Error') 
+  }
   
-  // useEffect(()=>{
-  //    load(); 
-  // },[]);
-
-  async function load(){ if(busy||cursor===null) return;
+  async function load(reset:boolean=false){ 
+    if(!reset && (busy||cursor===null)) return;
     
-    if(busy||cursor===null) return; 
 
     setBusy(true);
-    const r = await repo.listExpenses(cursor,5);
-    setItems(p=>[...p,...(r.items||[])]); 
+    const r = await withOverlay(repo.listExpenses(cursor,5),'Cargando...')
+    reset ? setItems((r.items||[])): setItems(p=>[...p,...(r.items||[])]); 
     setCursor(r.next); 
     setBusy(false);
     

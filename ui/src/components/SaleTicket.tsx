@@ -89,30 +89,12 @@ export default function SaleTicket(){
     // setInstallments([]);
   }
 
-  // async function loadStock(reset=false) {
-  //   // if(busy||cursor===null) return; 
-  //   if(busy) return; 
-  //   setBusy(true);
-  //   const cur = reset ? 0 : (cursor||0);
-  //   const r = await repo.listStockFast(cur, 10, false, filterText);
-  //   if (reset) setVariants(r.items||[]);
-  //   else       setVariants(prev=>[...prev, ...(r.items||[])]);
-
-  //   const m:Record<string,number> = {};
-  //   variants.forEach(v=> m[`${v.code}|${v.color}|${v.size}`] = v.stock);
-  //   setStock(m);
-
-  //   setCursor(r.next);
-  //   setBusy(false);
-  // }
-
   async function loadStock(reset=false) {
     if (busy) return;
     setBusy(true);
 
     const cur = reset ? 0 : (cursor || 0);
-    const r = await repo.listStockFast(cur, 10, false, filterText);
-
+    const r = await withOverlay(repo.listStockFast(cur, 10, false, filterText),'Cargando...')
     // Actualiza lista
     if (reset) setVariants(r.items || []);
     else       setVariants(prev => [...prev, ...(r.items || [])]);
@@ -129,18 +111,6 @@ export default function SaleTicket(){
   // Load variants with stock
   useEffect(()=>{
     loadStock(true)
-    // repo.listStockFast().then(r=>{
-    //   if (!r.ok) return;
-    //   // Adapt the shape to button grid (no color/size granularity).
-    //   // We'll display one button per code with its stock and price.
-    //   const items = r.items.map((it:any)=>({
-    //     code: it.code, name: it.name, color: it.color, size: it.size, stock: it.stock, defaultPrice: it.defaultPrice
-    //   }));
-    //   setVariants(items);
-    //   const m:Record<string,number> = {};
-    //   items.forEach(v=> m[`${v.code}|${v.color}|${v.size}`] = v.stock);
-    //   setStock(m);
-    // });
   },[]);
 
   useEffect(()=>{
@@ -286,19 +256,11 @@ function recalcPlan(respectManual: boolean){
       items
     }
     if (sch.length>0) payload.installments = sch;
-    const res = await repo.submitSale(payload);
+    const res = await withOverlay(repo.submitSale(payload),'Procesando...')
 
     if (res.ok){
       alert(`Venta OK. Ticket ${res.ticketId}. Total ${res.total}`);
       // Reset ticket y refrescar stock desde el backend
-      // setCart({});
-      // const r = await repo.listVariants();
-      // if (r.ok){
-      //   setVariants(r.items);
-      //   const m:Record<string,number> = {};
-      //   r.items.forEach(v=> m[keyOf(v)] = v.stock);
-      //   setStock(m);
-      // }
       resetTicket()
       loadStock(true)
     } else {

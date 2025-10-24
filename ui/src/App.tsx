@@ -1,7 +1,6 @@
 import React from 'react'
 import SaleTicket from './components/SaleTicket'
 import StockView from './components/StockView'
-import PaymentsHistory from './components/PaymentsHistory'
 import ExpensesView from './components/ExpensesView'
 import PurchaseOCRUpload from './components/PurchaseOCRUpload'
 import Cashbox from './components/Cashbox'

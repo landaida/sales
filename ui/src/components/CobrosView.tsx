@@ -9,15 +9,24 @@ export default function CobrosView(){
   const { withOverlay } = useOverlay();
   const [pend,setPend]=React.useState<any[]>([]); const [pc,setPc]=React.useState<number|null>(0); const [pb,setPb]=React.useState(false)
   const [hist,setHist]=React.useState<any[]>([]); const [hc,setHc]=React.useState<number|null>(0); const [hb,setHb]=React.useState(false)
+
   React.useEffect(()=>{ loadP(); loadH(); },[])
-  async function loadP(){ if(pb||pc===null) return; setPb(true); const r=await repo.receivablesPending(pc,5); setPend(p=>[...p,...(r.items||[])]); setPc(r.next); setPb(false) }
-  async function loadH(){ if(hb||hc===null) return; setHb(true); const r=await repo.receiptsHistory(hc,5); setHist(p=>[...p,...(r.items||[])]); setHc(r.next); setHb(false) }
+
+  async function loadP(reset:boolean=false){ if(!reset && (pb||pc===null)) return; setPb(true); 
+    const r = await withOverlay(repo.receivablesPending(pc,5),'Cargando...')
+    reset ? setPend((r.items||[])) : setPend(p=>[...p,...(r.items||[])]); setPc(r.next); setPb(false) }
+
+  async function loadH(reset:boolean=false){ if(!reset && (hb||hc===null)) return; setHb(true); 
+    const r = await withOverlay(repo.receiptsHistory(hc,5),'Cargando...')
+    reset ? setHist((r.items||[])) : setHist(p=>[...p,...(r.items||[])]); setHc(r.next); setHb(false) }
+
   async function pay(tid:string, n:number, monto:number, raw:string){ 
     const a=parseLocaleNumber(raw,false);
     // debugger
     // if(a<=0) return; 
-    const r=await repo.receivablePay(tid,n,a||monto); 
-    
+    const r = await withOverlay(repo.receivablePay(tid,n,a||monto),'Procesando...')
+    loadP(true);
+    loadH(true);
     alert(r.ok?'Cobro OK':'Error'); 
 
   }

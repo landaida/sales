@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { fmtGs } from '../utils/money'
 import { useOverlay } from '../overlay/OverlayContext';
+import { GoogleSheetsRepo } from '../storage/GoogleSheetsRepo'
 
+const repo = new GoogleSheetsRepo()
 
 export default function SalesHistory(){
   const { withOverlay } = useOverlay();
@@ -14,7 +16,7 @@ export default function SalesHistory(){
     if (busy || cursor===null) return
     setBusy(true)
     try{
-      const r = await fetch(`/gsapi/exec?action=sales_history&cursor=${cursor}&limit=5`).then(r=>r.json())
+      const r = await withOverlay(repo.salesHistory(cursor,5),'Cargando...')
       if (r?.ok){ setItems(p=>[...p,...r.items]); setCursor(r.next) }
     } finally { setBusy(false) }
   }
@@ -22,7 +24,9 @@ export default function SalesHistory(){
 
   async function toggle(ticket:string){
     if (details[ticket]){ const cp={...details}; delete cp[ticket]; setDetails(cp); return }
-    const r = await fetch(`/gsapi/exec?action=sale_details&ticket=${encodeURIComponent(ticket)}`).then(r=>r.json())
+    
+    const r = await withOverlay(repo.salesHistoryDetails(ticket),'Cargando...')
+
     setDetails(p=> ({...p, [ticket]: r?.items||[] }))
   }
 

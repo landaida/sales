@@ -17,7 +17,7 @@ export default function PurchaseHistory(){
     if (busy || cursor===null) return
     setBusy(true)
     try{
-      const r = await repo.purchaseHistory(cursor, 5)
+      const r = await withOverlay(repo.purchaseHistory(cursor, 5),'Cargando...')
       if (r?.ok){ setItems(prev=> [...prev, ...r.items]); setCursor(r.next) }
     } finally { setBusy(false) }
   }
@@ -25,7 +25,7 @@ export default function PurchaseHistory(){
 
   async function toggle(factura:string){
     if (expanded[factura]){ const cp={...expanded}; delete cp[factura]; setExpanded(cp); return }
-    const r = await repo.purchaseDetails(factura)
+    const r = await withOverlay(repo.purchaseDetails(factura),'Cargando...')
     setExpanded(prev=> ({...prev, [factura]: r?.items||[] }))
   }
 

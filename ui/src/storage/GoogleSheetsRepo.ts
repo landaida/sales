@@ -15,23 +15,6 @@ export interface IRepository {
   saleTicket(payload:any): Promise<any>
 }
 
-// const base = import.meta.env.VITE_API_BASE || ''
-const base = (import.meta as any).env.VITE_API_BASE || '/gsapi';
-// const API = (path:string)=> {
-//   // allow full URL or relative path
-//   const q = path.startsWith('http') ? path : (base + (base.includes('?') ? '&' : (base.endsWith('/exec')?'?':'/exec?')) + path)
-//   return q
-// }
-
-// export async function jget(qs:string){
-//   const url = API(qs + (qs.includes('?')?'':'') + `&key=${encodeURIComponent(import.meta.env.VITE_API_KEY||'dev-key')}`)
-//   const r = await fetch(url); return r.json()
-// }
-// export async function jpost(body:any){
-//   const url = API('')
-//   const r = await fetch(url,{ method:'POST', body: JSON.stringify({ ...body, key:(import.meta.env.VITE_API_KEY||'dev-key') }) })
-//   return r.json()
-// }
 export class GoogleSheetsRepo implements IRepository {
   
 
@@ -109,5 +92,11 @@ export class GoogleSheetsRepo implements IRepository {
   payablesPending(cursor=0, limit=5){ return this.jget(`action=payables_pending&cursor=${cursor}&limit=${limit}`); }
   paymentsHistory(cursor=0, limit=5){ return this.jget(`action=payments_history&cursor=${cursor}&limit=${limit}`); }
   payablePay(refId:string, cuotaN:number, amount:number, note?:string){ return this.jpost({ action:'payable_pay', refId, cuotaN, amount, note }); }
+  
+  cashIncomeHistory(cursor=0, limit=5){ return this.jget(`action=cash_income_history&cursor=${cursor}&limit=${limit}`); }
+  
+  cashIncomeSubmit(person:string, personId:string, descr:string, amount:number, numCuotas:number, kind:string){ return this.jpost({ action:'cash_income', person, personId, descr, amount, numCuotas, kind }); }
 
+  salesHistory(cursor=0, limit=5){ return this.jget(`action=sales_history&cursor=${cursor}&limit=${limit}`); }
+  salesHistoryDetails(ticket=''){ return this.jget(`action=sale_details&ticket=${encodeURIComponent(ticket)}`); }
 }
