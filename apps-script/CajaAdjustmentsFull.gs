@@ -52,6 +52,7 @@ function _applyAM_(row){
   if (row.tipo==='cobro')    return _amCobro_(row);
   if (row.tipo==='compra')   return _amCompra_(row);
   if (row.tipo==='venta')    return _amVenta_(row);
+  if (row.tipo==='pago')     return _amPago_(row);
   return _amGeneric_(row);
 }
 // function _amIngreso_(r){
@@ -157,3 +158,63 @@ function _amGeneric_(r){
 // Wiring (añadir en tu webapp):
 // doGet:  if (a==='adjust_list')  return adjustList_(e.parameter.cursor||0, e.parameter.limit||10);
 // doPost: if (a==='adjust_apply') return ok_(adjustApply_(String(data.moveId||'')));
+
+
+function _amPago_(r){
+  var id=_amId_('AM-Pago');
+  var amount = Math.max(r.egreso||0, 0); // pago original fue egreso
+  // 1) Caja: ingreso que revierte el pago
+  addCajaMov_('AM-Pago', id, 'Ajuste pago '+r.ref, r.cliente, '', amount, 0, { subtotal:0, descuento:0, entrega:0, aplazo:0 });
+
+  // 2) APagar: restaurar cuota exacta (RefId=r.ref, CuotaN parseado o leído del historial 'Pagos')
+  var m = String(r.descr||'').match(/Pago\s+cuota\s+(\d+)/i);
+  var cuotaN = m ? Number(m[1]) : null;
+
+  if (!cuotaN){
+    try{
+      var psh = SpreadsheetApp.getActive().getSheetByName('Pagos');
+      if (psh && psh.getLastRow()>1){
+        var pvals = psh.getRange(2,1,psh.getLastRow()-1,6).getValues(); // Fecha,RefId,Persona,CuotaN,Monto,Nota
+        for (var i=pvals.length-1;i>=0;i--){
+          if (String(pvals[i][1]||'')===String(r.ref) && String(pvals[i][2]||'')===String(r.cliente)){
+            cuotaN = Number(pvals[i][3]||0) || null; break;
+          }
+        }
+      }
+    }catch(e){}
+  }
+
+  try{
+    var ash = SpreadsheetApp.getActive().getSheetByName('APagar'); 
+    if (ash && ash.getLastRow()>1){
+      var a = ash.getRange(2,1,ash.getLastRow()-1,7).getValues();
+      for (var i=0;i<a.length;i++){
+        var refOk = String(a[i][0]||'')===String(r.ref);
+        var cuotaOk = cuotaN ? (Number(a[i][2]||0)===Number(cuotaN)) : true;
+        var estado = String(a[i][5]||'pendiente').toLowerCase();
+        if (refOk && cuotaOk && (estado==='pagado' || estado==='ajustado' || estado==='pendiente')){
+          var row = i+2;
+          var prev = Number(ash.getRange(row,5).getValue()||0);
+          var nuevo = (prev || 0) + amount; // si estaba pagado, prev será 0
+          ash.getRange(row,5,1,3).setValues([[nuevo, 'pendiente', 'AM-Pago '+id]]);
+          break;
+        }
+      }
+    }
+  }catch(e){}
+
+  // 3) Payables materializado: +amount
+  try{
+    var cliId='';
+    var cs=SpreadsheetApp.getActive().getSheetByName('Clientes');
+    if (cs && cs.getLastRow()>1){
+      var rr=cs.getRange(2,1,cs.getLastRow()-1,2).getValues();
+      for (var j=0;j<rr.length;j++){ if (String(rr[j][0]||'')===r.cliente){ cliId=String(rr[j][1]||''); break; } }
+    }
+    upsertPayable_(cliId||r.cliente, r.cliente, +amount);
+  }catch(e){}
+
+  try{ pagosMarkStatus_(r.ref, r.cliente, cuotaN, 'ajustado'); }catch(e){}
+
+  return { amId:id, restored: amount, cuotaN: cuotaN };
+}

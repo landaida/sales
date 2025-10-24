@@ -1048,7 +1048,8 @@ function increaseStockOnly_(code, qty){
 // ====== NEW: Payables (APagar) endpoints ======
 
 // Ensure payments history sheet
-function ensurePagos_(){ return ensureSheet_('Pagos',['Fecha','RefId','Persona','Monto','Nota']); }
+function ensurePagos_(){ return ensureSheet_('Pagos',['Fecha','RefId','Persona', 'CuotaN','Monto','Nota','Status']); }
+
 
 // List pending APagar using scan-from-bottom
 function payablesPending_(cursor, limit){
@@ -1082,7 +1083,7 @@ function payablePay_(refId, cuotaN, amount, note){
   else { sh.getRange(idx,5).setValue(monto - pago); }
 
   // Historial de pagos (egreso de caja)
-  ensurePagos_().appendRow([ new Date(), refId, persona, pago, String(note||'parcial') ]);
+  ensurePagos_().appendRow([ new Date(), refId, persona, Number(cuotaN||0), pago, String(note||'parcial'), 'activo' ]);
   addCajaMov_('pago', refId, 'Pago cuota '+cuotaN, persona, '', 0, pago);
 
   // Materialize Payables decrement (usa Clientes para resolver ID si existe)
@@ -1103,10 +1104,34 @@ function paymentsHistory_(cursor, limit){
   var sh=ensurePagos_(); if(sh.getLastRow()<=1) return ok_({ok:true,items:[],next:null});
   cursor=Math.max(0,Number(cursor||0)); limit=Math.max(1,Number(limit||5));
   var got = _scanFromBottom_({
-    sh: sh, lastCol: 5, cursor: cursor, limit: limit, pageSize: 100,
+    sh: sh, lastCol: 8, cursor: cursor, limit: limit, pageSize: 100,
     rowHandler: function(r, items){
-      items.push({ date:r[0], refId:r[1], persona:r[2], monto:Number(r[3]||0), nota:r[4] });
+      items.push({ date:r[0], refId:r[1], persona:r[2], cuotaN: r[3], monto:Number(r[4]||0), nota:r[5], status:(String(r[6]||'').trim()||'activo') });
     }
   });
   return ok_({ ok:true, items: got.items, next: got.next });
+}
+
+function pagosMarkStatus_(refId, persona, cuotaN, status){
+  var sh = ensurePagos_();
+  if (sh.getLastRow()<=1) return false;
+  var lastCol = Math.max(7, sh.getLastColumn());
+  var vals = sh.getRange(2,1,sh.getLastRow()-1,lastCol).getValues();
+  for (var i=vals.length-1;i>=0;i--){
+    var r = vals[i];
+    if (String(r[1]||'')===String(refId) && String(r[2]||'')===String(persona)){
+      // si hay CuotaN, lo matcheamos; si no, marcamos el match más reciente
+      if (lastCol>=7){
+        if (String(r[3]||'')==String(cuotaN||r[3])){
+          SpreadsheetApp.getActive().getSheetByName('Pagos').getRange(i+2,7).setValue(String(status||'ajustado'));
+          return true;
+        }
+      } else {
+        ensurePagos_();
+        SpreadsheetApp.getActive().getSheetByName('Pagos').getRange(i+2,7).setValue(String(status||'ajustado'));
+        return true;
+      }
+    }
+  }
+  return false;
 }

@@ -65,13 +65,14 @@ export default function PagosView(){
     {pc!==null && <button onClick={loadP} disabled={pb} style={{marginTop:8}}>{pb?'Cargando...':'Cargar más'}</button>}
 
     <h3 style={{marginTop:20}}>Últimos pagos</h3>
-    <table style={{width:'100%'}}><thead><tr><th>Fecha</th><th>Ref</th><th>Persona</th><th style={{textAlign:'right'}}>Monto</th></tr></thead>
+    <table style={{width:'100%'}}><thead><tr><th>Fecha</th><th>Ref</th><th>Persona</th><th style={{textAlign:'right'}}>Monto</th><th>Status</th></tr></thead>
       <tbody>{hist.map((r:any,i:number)=>(
         <tr key={i}>
           <td>{new Date(r.date).toLocaleString()}</td>
           <td>{r.refId}</td>
           <td>{r.persona}</td>
           <td style={{textAlign:'right'}}>{fmtGs.format(r.monto||0)}</td>
+          <td>{r.status || 'activo'}</td>
         </tr>
       ))}</tbody>
     </table>
