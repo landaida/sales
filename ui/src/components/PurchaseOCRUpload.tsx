@@ -1,6 +1,8 @@
 import React, { useMemo, useState, lazy, Suspense } from 'react'
 import { GoogleSheetsRepo } from '../storage/GoogleSheetsRepo'
 import { fmtGs, fmtBRL, parseLocaleNumber, prettyPriceGs } from '../utils/money';
+import { useOverlay } from '../overlay/OverlayContext';
+
 // ⬇️ carga on-demand
 const PurchaseHistory = lazy(() => import('./PurchaseHistory'));
 
@@ -43,6 +45,7 @@ function MoneyInput({ value, currency, style, onChange }: MoneyInputProps){
 type DraftLine = { code:string; name:string; color:string; size:string; barcode:string; qty:number; unitCostRS:number; salePriceGs?:number }
 
 export default function PurchaseOCRUpload(){
+  const { withOverlay } = useOverlay();
   const [tab, setTab] = useState<'compra'|'historial'>('compra');
   const [showHistory, setShowHistory] = useState(false);
   const [file, setFile] = useState<File|null>(null)

@@ -61,20 +61,47 @@ function _loadJSON_(k){ try{ var s=_props_().getProperty(k); return s?JSON.parse
 function _saveJSON_(k,o){ _props_().setProperty(k, JSON.stringify(o||{})); }
 function _loadArIndex_(){ return _loadJSON_('IDX_AR') || {}; }
 function _saveArIndex_(m){ _saveJSON_('IDX_AR', m||{}); }
+// function _findOrCreateReceivableRow_(clientId, name){
+//   var idx = _loadArIndex_();
+//   var row = idx[clientId];
+//   !row ? row = idx[name] : null;
+//   var sh = ensureReceivables_();
+//   if (!row && clientId){
+//     row = sh.getLastRow()+1;
+//     sh.getRange(row,1,1,4).setValues([[String(clientId||''), String(name||''), 0, new Date()]]);
+//     idx[clientId] = row;
+//     idx[name] = row;
+//     _saveArIndex_(idx);
+//   } else if(row) {
+//     var curName = String(sh.getRange(row,2).getValue()||'');
+//     if (String(name||'') && curName !== String(name||'')){ sh.getRange(row,2).setValue(String(name||'')); }
+//   }
+//   return row;
+// }
+
 function _findOrCreateReceivableRow_(clientId, name){
   var idx = _loadArIndex_();
-  var row = idx[clientId];
+  var row = idx[clientId] || idx[name];
   var sh = ensureReceivables_();
   if (!row){
     row = sh.getLastRow()+1;
-    sh.getRange(row,1,1,4).setValues([[String(clientId||''), String(name||''), 0, new Date()]]);
-    idx[clientId] = row; _saveArIndex_(idx);
+    var idCell = String(clientId||name||'');
+    sh.getRange(row,1,1,4).setValues([[ idCell, String(name||clientId||''), 0, new Date() ]]);
+    if (clientId) idx[clientId]=row;
+    if (name)     idx[name]=row;
+    _saveArIndex_(idx);
   } else {
     var curName = String(sh.getRange(row,2).getValue()||'');
     if (String(name||'') && curName !== String(name||'')){ sh.getRange(row,2).setValue(String(name||'')); }
+    if (clientId){
+      sh.getRange(row,1).setValue(String(clientId));
+      idx[clientId]=row; _saveArIndex_(idx);
+    }
   }
   return row;
 }
+
+
 function upsertReceivable_(clientId, name, deltaGs){
   var sh = ensureReceivables_();
   var row = _findOrCreateReceivableRow_(String(clientId||''), String(name||''));

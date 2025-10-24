@@ -86,12 +86,34 @@ function _listExpenseTypes(){
 }
 
 // Add expense row
+// function _addExpense(data){
+//   const s = sheetByName_('Gastos') || ss_().insertSheet('Gastos')
+//   const now = new Date()
+//   s.getRange(s.getLastRow()+1,1,1,4).setValues([[now, Number(data.amount||0), String(data.descr||''), String(data.note||'')]])
+//   return { ok:true }
+// }
+
 function _addExpense(data){
-  const s = sheetByName_('Gastos') || ss_().insertSheet('Gastos')
-  const now = new Date()
-  s.getRange(s.getLastRow()+1,1,1,4).setValues([[now, Number(data.amount||0), String(data.descr||''), String(data.note||'')]])
-  return { ok:true }
+  const s = sheetByName_('Gastos') || ss_().insertSheet('Gastos');
+  const now = new Date();
+  const amount = Number(data.amount||0);
+  const descr  = String(data.descr||'');
+  const note   = String(data.note||'');
+  s.getRange(s.getLastRow()+1,1,1,4).setValues([[now, amount, descr, note]]);
+  if (amount>0){
+    // Registrar movimiento en Caja (espeja también a Caja-YYYY-MM y calcula saldo)
+    addCajaMov_(
+      'gasto',
+      'GX-'+Utilities.formatDate(now, Session.getScriptTimeZone(),'yyyyMMddHHmmss'),
+      descr,
+      '', '', 
+      0, amount,
+      { subtotal:0, descuento:0, entrega:0, aplazo:0 }
+    );
+  }
+  return { ok:true };
 }
+
 
 // ===================== NEW: Variants, search & sale ticket ======================
 // Build a map from "Productos" with default sale price
@@ -198,6 +220,7 @@ function doGet(e){
   if (a==='sales_history')    return listSalesHistory_(e.parameter.cursor||0, e.parameter.limit||5);
   if (a==='sale_details')     return saleDetails_(String(e.parameter.ticket||''));
   if (a==='cash_income_history') return cashIncomeHistory_(e.parameter.cursor||0, e.parameter.limit||5);
+  if (a==='adjust_list')  return adjustList_(e.parameter.cursor||0, e.parameter.limit||10);
   return bad_('unknown action')
 }
 
@@ -211,6 +234,7 @@ function doPost(e){
   if (a==='purchase_save')  return ok_(purchaseSave_(data));
   if (a==='receivable_pay')return receivablePay_(data.ticketId, data.cuotaN, data.amount, data.note);
   if (a==='cash_income')  return cashIncome_(data);
+  if (a==='adjust_apply') return adjustApply_(String(data.moveId||''));
   return bad_('unknown action')
 }
 
@@ -325,6 +349,8 @@ function saleTicket_(data){
     try{ applySaleToStock_(code, qty) }catch(_){}
   });
   sh.getRange(sh.getLastRow()+1,1,filas.length,filas[0].length).setValues(filas);
+  var start = sh.getLastRow() - filas.length + 1;
+  ticketIndexPut_(ticketId, start, filas.length);
 
   var mode=String(data.paymentMode||'contado').toLowerCase();
   var n=Math.max(0, Number(data.numCuotas||0));
@@ -542,37 +568,6 @@ function updateProductOnPurchase_(code, name, qty, unitCostGs, color, size, sale
   }
 }
 
-
-
-/** Last headers by factura/pdf, newest first. */
-// function listSalesHistory_(cursor, limit){
-//   cursor=Math.max(0,Number(cursor||0)); limit=Math.max(1,Number(limit||5));
-//   var sh=ensureSheet_('Ventas',[]); if(sh.getLastRow()<=1) return ok_({ok:true,items:[],next:null});
-//   var rows=sh.getRange(2,1,sh.getLastRow()-1,22).getValues(); rows.reverse();
-
-//   var caja=ensureCaja_(), downByTicket={};
-//   if(caja.getLastRow()>1){
-//     var c=caja.getRange(2,1,caja.getLastRow()-1,12).getValues();
-//     c.forEach(function(r){ if(String(r[1])==='venta'){ var ref=String(r[2]||''); var ent=Number(r[10]||r[6]||0); downByTicket[ref]=(downByTicket[ref]||0)+ent; } });
-//   }
-
-//   var seen={}, out=[], scan=cursor;
-//   for(; scan<rows.length && out.length<limit; scan++){
-//     var r=rows[scan], ticket=String(r[13]||''); if(!ticket||seen[ticket]) continue; seen[ticket]=1;
-//     var subset=rows.filter(rr=> String(rr[13]||'')===ticket);
-//     var subtotal=0, desc=0, fecha=r[0], cliente=r[1];
-//     subset.forEach(rr=>{ subtotal+=Number(rr[5]||0); desc += Number(rr[16]||0); });
-//     var total=Math.max(0, subtotal - desc);
-//     var entrega=downByTicket[ticket]||0;
-//     var aplazo=Math.max(0, total - entrega);
-//     out.push({ date:fecha, ticket, cliente, subtotal, descuento:desc, entrega, aplazo, total });
-//   }
-//   var next=(scan<rows.length)? scan : null;         // <<-- puntero scan
-//   return ok_({ ok:true, items: out, next });
-// }
-
-
-
 function purchaseDetails_(factura){
   var sh = sheetByName_('Compras'); if (!sh || sh.getLastRow()<=1) return ok_({ ok:true, items:[] });
   var rows = sh.getRange(2,1,sh.getLastRow()-1,16).getValues(), out=[];
@@ -584,8 +579,6 @@ function purchaseDetails_(factura){
   });
   return ok_({ ok:true, items: out });
 }
-
-
 
 /** One item per product code from Productos!E (fast) */
 function listStockFastFromProductos_(cursor, limit, showWithoutStock, filterText){
@@ -655,36 +648,12 @@ function ensureCaja_(){
   return sh;
 }
 
-/** Caja con metadatos opcionales: subtotal, descuento, entrega, aPlazo */
-// function addCajaMov_(tipo, ref, descr, cliente, proveedor, ingreso, egreso, meta){
-//   var sh = ensureCaja_();
-//   var row = [ new Date(), String(tipo||''), String(ref||''), String(descr||''),
-//     String(cliente||''), String(proveedor||''), Number(ingreso||0), Number(egreso||0) ];
-//   if (meta){
-//     row.push(Number(meta.subtotal||0), Number(meta.descuento||0), Number(meta.entrega||0), Number(meta.aplazo||0));
-//   }
-//   sh.appendRow(row);
-// }
-
 function addCajaMov_(tipo, ref, descr, cliente, proveedor, ingreso, egreso, meta){
   // Keep original behavior + running balance + monthly mirror
   cajaEnsureExtended_();
   return cajaAppendWithBalance_(tipo, ref, descr, cliente, proveedor, ingreso, egreso, meta);
 }
 
-// function cashboxSummary_(){
-//   var caja = sheetByName_('Caja'), ac = sheetByName_('ACobrar');
-//   var in_ = 0, out_ = 0, porCobrar = 0;
-//   if (caja && caja.getLastRow()>1){
-//     caja.getRange(2,1,caja.getLastRow()-1,8).getValues()
-//       .forEach(r=>{ in_+=Number(r[6]||0); out_+=Number(r[7]||0); });
-//   }
-//   if (ac && ac.getLastRow()>1){
-//     ac.getRange(2,1,ac.getLastRow()-1,7).getValues()
-//       .forEach(r=>{ if(String(r[5]||'pendiente').toLowerCase()!=='pagado') porCobrar+=Number(r[4]||0); });
-//   }
-//   return ok_({ ok:true, cashOnHand: in_-out_, receivablesTotal: porCobrar });
-// }
 function cashboxSummary_(){
   cajaEnsureExtended_();
   var sh = SpreadsheetApp.getActive().getSheetByName('Caja');
@@ -707,11 +676,11 @@ function cashboxMoves_(cursor, limit){
   // var rows=sh.getRange(2,1,sh.getLastRow()-1,12).getValues(); rows.reverse();
   // var out=[], n=0; 
 
-  var {items, next} = _scanFromBottom_({sh, lastCol:12, cursor, limit, pageSize:100, rowHandler:(r, items)=>{
+  var {items, next} = _scanFromBottom_({sh, lastCol:16, cursor, limit, pageSize:100, rowHandler:(r, items)=>{
   // for (var i=cursor;i<rows.length && out.length<limit;i++){
     // var r=rows[i]; 
     items.push({ date:r[0], tipo:r[1], ref:r[2], descr:r[3],
-      cliente:r[4], proveedor:r[5], ingreso:Number(r[6]||0), egreso:Number(r[7]||0), subtotal:Number(r[8]||0), descuento:Number(r[9]||0), entrega:Number(r[10]||0), aplazo:Number(r[11]||0) }); 
+      cliente:r[4], proveedor:r[5], ingreso:Number(r[6]||0), egreso:Number(r[7]||0), subtotal:Number(r[8]||0), descuento:Number(r[9]||0), entrega:Number(r[10]||0), aplazo:Number(r[11]||0), status: String(r[14]||'').trim() || 'activo' }); 
       // n++; 
   // }
   }});
@@ -814,6 +783,15 @@ function receivablePay_(ticketId, cuotaN, amount, note){
 
   ensureCobros_().appendRow([ new Date(), ticketId, cliente, pago, String(note||'parcial') ]);
   addCajaMov_('cobro', ticketId, 'Cobro cuota '+cuotaN, cliente, '', pago, 0);
+
+  // Resolve clientId from Clientes
+  var cliId=''; try{
+    var cs=SpreadsheetApp.getActive().getSheetByName('Clientes');
+    if (cs && cs.getLastRow()>1){
+      var rr=cs.getRange(2,1,cs.getLastRow()-1,2).getValues();
+      for (var j=0;j<rr.length;j++){ if (String(rr[j][0]||'')===cliente){ cliId=String(rr[j][1]||''); break; } }
+    }
+  }catch(e){}
   // Materialize AR decrement
   try{ upsertReceivable_(cliId||cliente, cliente, -pago); }catch(e){}
   return ok_({ ok:true });
@@ -835,49 +813,40 @@ function receiptsHistory_(cursor, limit){
   return ok_({ok:true,items, next });
 }
 
-// function listSalesHistory_(cursor, limit){
-//   cursor=Math.max(0,Number(cursor||0)); limit=Math.max(1,Number(limit||5));
-//   var sh=ensureSheet_('Ventas',[]); if(sh.getLastRow()<=1) return ok_({ok:true,items:[],next:null});
-//   var rows=sh.getRange(2,1,sh.getLastRow()-1,22).getValues(); rows.reverse();
-
-//   // down (entrega) por ticket desde Caja
-//   var caja=ensureCaja_(), downByTicket={};
-//   if(caja.getLastRow()>1){
-//     var c=caja.getRange(2,1,caja.getLastRow()-1,12).getValues();
-//     c.forEach(function(r){
-//       if(String(r[1])==='venta'){
-//         var ref=String(r[2]||''); var ent=Number(r[10]||r[6]||0);
-//         downByTicket[ref]=(downByTicket[ref]||0)+ent;
-//       }
-//     });
-//   }
-
-//   var seen={}, out=[], count=0;
-//   for(var i=cursor;i<rows.length && out.length<limit;i++){
-//     var r=rows[i], ticket=String(r[13]||''); if(!ticket||seen[ticket]) continue; seen[ticket]=1;
-//     var subset=rows.filter(rr=> String(rr[13]||'')===ticket);
-//     var subtotal=0, desc=0, fecha=r[0], cliente=r[1];
-//     subset.forEach(rr=>{ subtotal+=Number(rr[5]||0); desc += Number(rr[16]||0); });
-//     var total=Math.max(0, subtotal - desc);
-//     var entrega=downByTicket[ticket]||0;
-//     var aplazo=Math.max(0, total - entrega);
-//     out.push({ date:fecha, ticket, cliente, subtotal, descuento:desc, entrega, aplazo, total });
-//     count++;
-//   }
-//   var next=(cursor+count<rows.length)?(cursor+count):null;
-//   return ok_({ ok:true, items: out, next });
-// }
-
 function saleDetails_(ticket){
   var sh=ss_().getSheetByName('Ventas'); if(!sh||sh.getLastRow()<=1) return ok_({ok:true,items:[]});
-  var rows=sh.getRange(2,1,sh.getLastRow()-1,22).getValues().filter(r=> String(r[13]||'')===String(ticket));
-  var out=rows.map(r=>({ producto:r[2], qty:r[3], unit:r[4], total:r[5], desc:r[16] }));
-  return ok_({ ok:true, items: out });
+
+  let {items, next} = _scanFromBottom_({sh, lastCol:22, cursor:0, limit:100, pageSize:100, rowHandler:(r, items)=>{
+    if(String(r[12]||'')!==String(ticket)) return;
+    items.push({ producto:r[2], qty:r[3], unit:r[4], total:r[5], desc:r[16] })
+  }});
+  return ok_({ok:true,items, next });
+
 }
+
+// function cashIncome_(data){
+//   var now=new Date();
+//   var persona=String(data.person||'').trim(); if(!persona) return ok_({ok:false,error:'person required'});
+//   var amount=Math.max(0, Number(data.amount||0)); if(amount<=0) return ok_({ok:false,error:'amount<=0'});
+//   var descr=String(data.descr||'Ingreso');
+//   var n=Math.max(0, Number(data.numCuotas||0));
+//   var kind=String(data.kind||'mensual').toLowerCase();
+//   var refId='IN-'+Utilities.formatDate(now,Session.getScriptTimeZone(),'yyyyMMddHHmmss');
+
+//   addCajaMov_('ingreso', refId, descr, persona, '', amount, 0, {subtotal:amount, descuento:0, entrega:amount, aplazo:0});
+//   if (n>0){
+//     var per=Math.floor(amount/n), resto=amount-per*n, base=new Date(now);
+//     for (var i=1;i<=n;i++){ var d=new Date(base); if(kind==='semanal') d.setDate(d.getDate()+i*7); else d.setMonth(d.getMonth()+i);
+//       addPayable_(refId, persona, i, d, per+(i<=resto?1:0)); }
+//   }
+//   return ok_({ ok:true, refId, amount, n });
+// }
 
 function cashIncome_(data){
   var now=new Date();
   var persona=String(data.person||'').trim(); if(!persona) return ok_({ok:false,error:'person required'});
+  var clientId=String(data.personId||'').trim(); // NEW: opcional
+  if (clientId || persona){ try{ upsertClient_(persona, clientId||persona); }catch(e){} }
   var amount=Math.max(0, Number(data.amount||0)); if(amount<=0) return ok_({ok:false,error:'amount<=0'});
   var descr=String(data.descr||'Ingreso');
   var n=Math.max(0, Number(data.numCuotas||0));
@@ -887,11 +856,14 @@ function cashIncome_(data){
   addCajaMov_('ingreso', refId, descr, persona, '', amount, 0, {subtotal:amount, descuento:0, entrega:amount, aplazo:0});
   if (n>0){
     var per=Math.floor(amount/n), resto=amount-per*n, base=new Date(now);
+    var total=0;
     for (var i=1;i<=n;i++){ var d=new Date(base); if(kind==='semanal') d.setDate(d.getDate()+i*7); else d.setMonth(d.getMonth()+i);
-      addPayable_(refId, persona, i, d, per+(i<=resto?1:0)); }
+      var m=per+(i<=resto?1:0); total+=m; addPayable_(refId, persona, i, d, m); }
+    try{ upsertPayable_(clientId||persona, persona, total); }catch(e){}
   }
   return ok_({ ok:true, refId, amount, n });
 }
+
 
 function ensureAPagar_(){ 
   return ensureSheet_('APagar',['RefId','Persona','CuotaN','FechaCuota','MontoCuota','Estado','Nota']); 
@@ -965,11 +937,16 @@ function listSalesHistory_(cursor, limit){
   var sh=ensureSheet_('Ventas',[]); if(sh.getLastRow()<=1) return ok_({ok:true,items:[],next:null});
   // var rows=sh.getRange(2,1,sh.getLastRow()-1,22).getValues(); rows.reverse();
 
-  const downByTicket={};
+  const downByTicket={}, statusByTicket={};
   var caja=ensureCaja_();
   if(caja.getLastRow()>1){
     var c=caja.getRange(2,1,caja.getLastRow()-1,12).getValues();
-    c.forEach(function(r){ if(String(r[1])==='venta'){ var ref=String(r[2]||''); var ent=Number(r[10]||r[6]||0); downByTicket[ref]=(downByTicket[ref]||0)+ent; } });
+    c.forEach(function(r){ if(String(r[1])==='venta'){ 
+      var ref=String(r[2]||''); 
+      var ent=Number(r[10]||r[6]||0); 
+      downByTicket[ref]=(downByTicket[ref]||0)+ent;
+      statusByTicket[ref]=r[15]
+    } });
   }
 
   var out=[], scan=cursor;
@@ -983,7 +960,7 @@ function listSalesHistory_(cursor, limit){
     var total=Math.max(0, subtotal - desc);
     var entrega=downByTicket[ticket]||0;
     var aplazo=Math.max(0, total - entrega);
-    items.push({ date:fecha, ticket, cliente, subtotal, descuento:desc, entrega, aplazo, total });
+    items.push({ date:fecha, ticket, cliente, subtotal, descuento:desc, entrega, aplazo, total, status: statusByTicket[ticket] || 'activo' });
   // }
   }});
   // var next=(scan<rows.length)? scan : null;         // <<-- puntero scan
@@ -1047,3 +1024,19 @@ function _scanFromBottom_({sh, lastCol, cursor, limit, pageSize, rowHandler}){
     root.__codeExports__ = exportsObj; // no interfiere con nada
   }
 })(this);
+
+// increaseStockOnly_: suma en Productos!E sin alterar promedios
+function increaseStockOnly_(code, qty){
+  var s = sh_ && sh_('Productos') || SpreadsheetApp.getActive().getSheetByName('Productos');
+  if (!s) throw 'Productos sheet not found';
+  var row = (typeof ensureProductRow_==='function') ? ensureProductRow_(code, String(code)) : (function(){
+    var last = s.getLastRow();
+    if (last<=1){ s.appendRow(['Codigo','Nombre','PrecioVenta','','Stock','CostoPromedio','Activo','UltimoCosto','Markup%','PrecioSugerido']); last = 2; }
+    var rng = s.getRange(2,1,Math.max(0,s.getLastRow()-1),1).getValues();
+    for (var i=0;i<rng.length;i++){ if (String(rng[i][0]||'')===String(code)) return i+2; }
+    s.appendRow([String(code), String(code), 0, '', 0, 0, 1, 0, 0, 0]); return s.getLastRow();
+  })();
+  var cell = s.getRange(row, 5); // E: Stock
+  var v = cell.getValue(); var prev = (typeof toNumBR_==='function') ? toNumBR_(v) : Number(v||0);
+  cell.setValue(prev + Number(qty||0));
+}

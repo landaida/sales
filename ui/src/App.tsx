@@ -7,8 +7,10 @@ import PurchaseOCRUpload from './components/PurchaseOCRUpload'
 import Cashbox from './components/Cashbox'
 import CobrosView from './components/CobrosView'
 import CashIncome from './components/CashIncome'
+import AdjustmentsView from './components/AdjustmentsView'
+import { OverlayProvider, GlobalOverlay } from './overlay/OverlayContext';
 
-type TabKey = '#caja'|'#importarpdf'|'#venta'|'#stock'|'#cobros'|'#gastos'|'#ingreso'
+type TabKey = '#caja'|'#importarpdf'|'#venta'|'#stock'|'#cobros'|'#gastos'|'#ingreso'|'#ajustes'
 const TABS: { key:TabKey; label:string }[] = [
   { key:'#caja',        label:'Caja' },
   { key:'#importarpdf', label:'Compras' },
@@ -17,6 +19,7 @@ const TABS: { key:TabKey; label:string }[] = [
   { key:'#cobros',      label:'Cobros' },
   { key:'#gastos',      label:'Gastos' },
   { key:'#ingreso',     label:'Ingresos' },
+  { key:'#ajustes',     label:'Ajustes' },
 ]
 
 export default function App(){
@@ -45,47 +48,53 @@ export default function App(){
   })
 
   return (
-    <main style={{maxWidth:1000, margin:'0 auto', padding:16}}>
-      <h1 style={{marginBottom:8}}>Sistema de Ventas Simple</h1>
+    <OverlayProvider>
+      {/* tu layout / rutas / tabs */}
+      <main style={{maxWidth:1000, margin:'0 auto', padding:16}}>
+        <h1 style={{marginBottom:8}}>Sistema de Ventas Simple</h1>
 
-      {/* Tabs accesibles */}
-      <div role="tablist" aria-label="Secciones" style={tabbarStyle}>
-        {TABS.map(t=>{
-          const active = route===t.key
-          return (
-            <a
-              key={t.key}
-              href={t.key}
-              role="tab"
-              aria-selected={active}
-              tabIndex={active? 0 : -1}
-              style={tabStyle(active)}
-              onKeyDown={e=>{
-                // Navegación con flechas en desktop
-                if(e.key==='ArrowRight' || e.key==='ArrowLeft'){
-                  e.preventDefault()
-                  const idx = TABS.findIndex(x=>x.key===route)
-                  const next = e.key==='ArrowRight'
-                    ? TABS[(idx+1)%TABS.length]
-                    : TABS[(idx-1+TABS.length)%TABS.length]
-                  window.location.hash = next.key
-                }
-              }}
-            >
-              {t.label}
-            </a>
-          )
-        })}
-      </div>
+        {/* Tabs accesibles */}
+        <div role="tablist" aria-label="Secciones" style={tabbarStyle}>
+          {TABS.map(t=>{
+            const active = route===t.key
+            return (
+              <a
+                key={t.key}
+                href={t.key}
+                role="tab"
+                aria-selected={active}
+                tabIndex={active? 0 : -1}
+                style={tabStyle(active)}
+                onKeyDown={e=>{
+                  // Navegación con flechas en desktop
+                  if(e.key==='ArrowRight' || e.key==='ArrowLeft'){
+                    e.preventDefault()
+                    const idx = TABS.findIndex(x=>x.key===route)
+                    const next = e.key==='ArrowRight'
+                      ? TABS[(idx+1)%TABS.length]
+                      : TABS[(idx-1+TABS.length)%TABS.length]
+                    window.location.hash = next.key
+                  }
+                }}
+              >
+                {t.label}
+              </a>
+            )
+          })}
+        </div>
 
-      {/* Panels */}
-      {route==='#caja'        && <Cashbox />}
-      {route==='#venta'       && <SaleTicket />}
-      {route==='#stock'       && <StockView />}
-      {route==='#cobros'      && <CobrosView />}
-      {route==='#gastos'      && <ExpensesView />}
-      {route==='#importarpdf' && <PurchaseOCRUpload />}
-      {route==='#ingreso'     && <CashIncome />}
-    </main>
+        {/* Panels */}
+        {route==='#caja'        && <Cashbox />}
+        {route==='#venta'       && <SaleTicket />}
+        {route==='#stock'       && <StockView />}
+        {route==='#cobros'      && <CobrosView />}
+        {route==='#gastos'      && <ExpensesView />}
+        {route==='#importarpdf' && <PurchaseOCRUpload />}
+        {route==='#ingreso'     && <CashIncome />}
+        {route==='#ajustes'     && <AdjustmentsView />}
+      </main>
+      {/* Overlay global renderizado UNA sola vez aquí */}
+      <GlobalOverlay />
+    </OverlayProvider>
   )
 }

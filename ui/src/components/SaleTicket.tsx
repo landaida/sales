@@ -3,6 +3,8 @@ import React, { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { GoogleSheetsRepo } from '../storage/GoogleSheetsRepo';
 import type { VariantItem, SaleItem } from '../storage/IRepository';
 import { fmtGs, parseLocaleNumber } from '../utils/money';
+import { useOverlay } from '../overlay/OverlayContext';
+
 // ⬇️ carga on-demand
 const SalesHistory = lazy(() => import('./SalesHistory'));
 
@@ -36,6 +38,7 @@ function MoneyInputGs({
 
 
 export default function SaleTicket(){
+  const { withOverlay } = useOverlay();
   const [cursor,setCursor]=React.useState<number|null>(0); 
   const [busy,setBusy]=React.useState(false);
 
@@ -271,6 +274,8 @@ function recalcPlan(respectManual: boolean){
     }
     const items = Object.values(cart);
     if (!items.length){ alert('No hay ítems en el ticket'); return; }
+    if (busy) return;
+    setBusy(true);
     const payload:any = {
       customer: { name: custName.trim(), id: custId.trim() },
       discountTotal: discount||0,
@@ -299,6 +304,7 @@ function recalcPlan(respectManual: boolean){
     } else {
       alert('Error al registrar la venta');
     }
+    setBusy(false);
   }
 
 
@@ -536,7 +542,7 @@ useEffect(()=>{
                     </tr>))}</tbody>
                   </table>
                 </div>)}
-                <div><button onClick={submit} style={{ padding:'8px 16px', fontWeight:700, borderRadius:8 }}>Registrar venta</button></div>
+                <div><button onClick={submit} disabled={busy} style={{ padding:'8px 16px', fontWeight:700, borderRadius:8 }}>Registrar venta</button></div>
               </div>
             </div>
           </div>

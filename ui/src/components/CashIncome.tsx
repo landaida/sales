@@ -1,9 +1,10 @@
 import React from 'react'
 import { fmtGs, parseLocaleNumber } from '../utils/money'
-
+import { useOverlay } from '../overlay/OverlayContext';
 
 
 export default function CashIncome(){
+  const { withOverlay } = useOverlay();
     // búsqueda en Clientes
     const [q,setQ] = React.useState(''); const [sugg,setSugg] = React.useState<{name:string;id:string}[]>([]);
     React.useEffect(()=>{ const t=setTimeout(async()=>{ const qs=q.trim(); if(!qs){ setSugg([]); return; }
@@ -11,6 +12,7 @@ export default function CashIncome(){
         setSugg(r?.items||[]); },250); return ()=>clearTimeout(t);
     },[q]);
   const [person,setPerson]=React.useState('')
+  const [personId,setPersonId]=React.useState('')
   const [descr,setDescr]=React.useState('Ingreso')
   const [amountText,setAmountText]=React.useState('0')
   const [n,setN]=React.useState(0)
@@ -21,7 +23,7 @@ export default function CashIncome(){
     if(!person.trim() || amount<=0) return alert('Persona y monto obligatorios')
     const r = await fetch('/gsapi/exec', {
       method:'POST',
-      body: JSON.stringify({ action:'cash_income', person, descr, amount, numCuotas:n, kind })
+      body: JSON.stringify({ action:'cash_income', person, personId, descr, amount, numCuotas:n, kind })
     }).then(r=>r.json())
     alert(r.ok?'Ingreso registrado':'Error')
   }
@@ -37,6 +39,7 @@ export default function CashIncome(){
     <h2>Ingreso de efectivo</h2>
     <div style={{display:'flex', gap:8, alignItems:'center'}}>
       <input placeholder="Cliente/Proveedor/Inversionista" value={person} onChange={e=>setPerson(e.target.value)} style={{width:320}}/>
+      <input placeholder="Doc Cliente (ID)*" value={personId} onChange={e=>setPersonId(e.target.value)} />
       <input placeholder="Descripción" value={descr} onChange={e=>setDescr(e.target.value)} style={{width:220}}/>
       <input placeholder="Monto (Gs)" value={amountText} onChange={e=>setAmountText(e.target.value)} style={{width:160}}/>
       <label>Cuotas: <input type="number" value={n} onChange={e=>setN(Number(e.target.value)||0)} style={{width:80}}/></label>
@@ -45,7 +48,7 @@ export default function CashIncome(){
     </div>
       <input placeholder="Buscar persona (Clientes)" value={q} onChange={e=>setQ(e.target.value)} />
 
-    {!!q.trim() && !!sugg.length && <div> {sugg.map(c=> <div onClick={()=>{setPerson(c.name); setQ(''); setSugg([]);}}>{c.name} — {c.id}</div>)} </div>}
+    {!!q.trim() && !!sugg.length && <div> {sugg.map(c=> <div onClick={()=>{setPerson(c.name); setPersonId(c.id); setQ(''); setSugg([]);}}>{c.name} — {c.id}</div>)} </div>}
 
     <h3>Últimos</h3>
     <table style={{width:'100%'}}><thead><tr><th>Fecha</th><th>Descripción</th><th>Nota</th><th style={{textAlign:'right'}}>Monto</th></tr></thead>

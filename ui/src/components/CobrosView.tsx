@@ -1,9 +1,12 @@
 import React from 'react'
 import { GoogleSheetsRepo } from '../storage/GoogleSheetsRepo'
 import { fmtGs, parseLocaleNumber } from '../utils/money'
+import { useOverlay } from '../overlay/OverlayContext';
+
 const repo=new GoogleSheetsRepo()
 
 export default function CobrosView(){
+  const { withOverlay } = useOverlay();
   const [pend,setPend]=React.useState<any[]>([]); const [pc,setPc]=React.useState<number|null>(0); const [pb,setPb]=React.useState(false)
   const [hist,setHist]=React.useState<any[]>([]); const [hc,setHc]=React.useState<number|null>(0); const [hb,setHb]=React.useState(false)
   React.useEffect(()=>{ loadP(); loadH(); },[])

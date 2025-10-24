@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { GoogleSheetsRepo } from '../storage/GoogleSheetsRepo'
 import { fmtGs } from '../utils/money'
+import { useOverlay } from '../overlay/OverlayContext';
+
 const repo = new GoogleSheetsRepo()
 export default function ExpensesView(){
+  const { withOverlay } = useOverlay();
   const [items,setItems]=useState<any[]>([]);
   const [cursor,setCursor]=useState<number|null>(0);
   const [busy,setBusy]=useState(false);

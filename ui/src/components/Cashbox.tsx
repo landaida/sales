@@ -2,8 +2,10 @@ import React from 'react'
 import { GoogleSheetsRepo } from '../storage/GoogleSheetsRepo'
 import { fmtGs } from '../utils/money'
 const repo = new GoogleSheetsRepo()
+import { useOverlay } from '../overlay/OverlayContext';
 
 export default function Cashbox(){
+  const { withOverlay } = useOverlay();
   const [sum,setSum]=React.useState<any>(); const [items,setItems]=React.useState<any[]>([]);
   const [cursor,setCursor]=React.useState<number|null>(0); 
   const [busy,setBusy]=React.useState(false);
@@ -37,6 +39,7 @@ export default function Cashbox(){
     <th style={{textAlign:'right', paddingRight:'4.0rem'}}>A plazo</th>
     <th style={{textAlign:'right', paddingRight:'2.5rem'}}>Entrada G$</th>
     <th style={{textAlign:'right'}}>Salida G$</th>
+    <th style={{textAlign:'center'}}>Status</th>
   </tr>
 </thead>
 <tbody>
@@ -60,6 +63,7 @@ export default function Cashbox(){
     <td style={{textAlign:'right', paddingRight:'4.0rem'}}>{fmtGs.format(r.aplazo||0)}</td>
     <td style={{textAlign:'right', paddingRight:'2.5rem'}}>{fmtGs.format(r.ingreso||0)}</td>
     <td style={{textAlign:'right'}}>{fmtGs.format(r.egreso||0)}</td>
+    <td style={{textAlign:'right'}}>{r.status || 'activo'}</td>
   </tr>
 ))}
 </tbody></table>

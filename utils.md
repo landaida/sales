@@ -49,7 +49,7 @@ npm run dev
 
 6. **Referencia base**
 
-* Usa **`combined.txt`** como **resumen/base** del source para evitar dudas.
+* Te paso siempre **`combined.txt`** para que lo uses como **resumen/base** del source para evitar que tengas dudas.
 
 7. **Consistencia de nombres y contratos (API stability)**
 

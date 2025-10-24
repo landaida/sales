@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react'
 import { fmtGs } from '../utils/money'
+import { useOverlay } from '../overlay/OverlayContext';
+
 
 export default function SalesHistory(){
+  const { withOverlay } = useOverlay();
   const [items,setItems] = useState<any[]>([])
   const [cursor,setCursor] = useState<number|null>(0)
   const [busy,setBusy] = useState(false)
@@ -32,16 +35,16 @@ export default function SalesHistory(){
             <div style={{display:'flex', gap:12, alignItems:'center', justifyContent:'space-between'}}>
               <div><b>{new Date(h.date).toLocaleString()}</b> — {h.ticket} — {h.cliente} &nbsp;
                 <span style={{opacity:0.8}}>
-                  Total: {fmtGs.format(h.total||0)} | Desc: {fmtGs.format(h.descuento||0)} | Entrega: {fmtGs.format(h.entrega||0)} | A plazo: {fmtGs.format(h.aplazo||0)}
+                  Total: {fmtGs.format(h.total||0)} | Desc: {fmtGs.format(h.descuento||0)} | Entrega: {fmtGs.format(h.entrega||0)} | A plazo: {fmtGs.format(h.aplazo||0)} | Status: {h.status}
                 </span>
               </div>
               <button onClick={()=>toggle(h.ticket)}>{details[h.ticket]?'Ocultar':'Ver detalles'}</button>
             </div>
             {details[h.ticket] && (
               <table style={{marginTop:8, width:'100%', borderCollapse:'collapse'}}>
-                <thead><tr><th>Producto</th><th>Cant</th><th>Unit</th><th>Total</th><th>Desc$</th></tr></thead>
+                <thead><tr><th>Producto</th><th>Cant</th><th style={{textAlign:'center'}}>Total</th><th style={{textAlign:'center'}}>Desc$</th></tr></thead>
                 <tbody>{details[h.ticket].map((l:any,ix:number)=>(
-                  <tr key={ix}><td>{l.producto}</td><td>{l.qty}</td><td style={{textAlign:'right'}}>{fmtGs.format(l.unit||0)}</td><td style={{textAlign:'right'}}>{fmtGs.format(l.total||0)}</td><td style={{textAlign:'right'}}>{fmtGs.format(l.desc||0)}</td></tr>
+                  <tr key={ix}><td>{l.producto}</td><td>{l.qty}</td><td style={{textAlign:'right'}}>{fmtGs.format(l.total||0)}</td><td style={{textAlign:'right'}}>{fmtGs.format(l.desc||0)}</td></tr>
                 ))}</tbody>
               </table>
             )}

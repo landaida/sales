@@ -1,7 +1,11 @@
 import React from 'react'
 import { GoogleSheetsRepo } from '../storage/GoogleSheetsRepo'
+import { useOverlay } from '../overlay/OverlayContext';
+
 const repo = new GoogleSheetsRepo()
 export default function StockView(){
+  const { withOverlay } = useOverlay();
+  
   const [items,setItems]=React.useState<any[]>([]);
   const [showWithoutStock,setShowWithoutStock]=React.useState(false);
   const [cursor,setCursor]=React.useState<number|null>(0); 
