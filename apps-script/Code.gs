@@ -221,6 +221,8 @@ function doGet(e){
   if (a==='sale_details')     return saleDetails_(String(e.parameter.ticket||''));
   if (a==='cash_income_history') return cashIncomeHistory_(e.parameter.cursor||0, e.parameter.limit||5);
   if (a==='adjust_list')  return adjustList_(e.parameter.cursor||0, e.parameter.limit||10);
+  if (a==='payables_pending') return payablesPending_(e.parameter.cursor||0, e.parameter.limit||5);
+  if (a==='payments_history') return paymentsHistory_(e.parameter.cursor||0, e.parameter.limit||5);
   return bad_('unknown action')
 }
 
@@ -235,6 +237,7 @@ function doPost(e){
   if (a==='receivable_pay')return receivablePay_(data.ticketId, data.cuotaN, data.amount, data.note);
   if (a==='cash_income')  return cashIncome_(data);
   if (a==='adjust_apply') return adjustApply_(String(data.moveId||''));
+  if (a==='payable_pay') return ok_(payablePay_(data.refId, data.cuotaN, data.amount, data.note));
   return bad_('unknown action')
 }
 
@@ -883,9 +886,9 @@ function cashIncomeHistory_(cursor, limit){
   // rows.reverse(); // desc
   // var out=[], c=0;
   // for(var i=cursor;i<rows.length && out.length<limit;i++){
-  let {items, next} = _scanFromBottom_({sh, lastCol:12, cursor, limit, pageSize:100, rowHandler:(r, items)=>{
+  let {items, next} = _scanFromBottom_({sh, lastCol:16, cursor, limit, pageSize:100, rowHandler:(r, items)=>{
     // var r=rows[i];
-    if(String(r[1])!=='ingreso') return;
+    if(String(r[1])!=='ingreso' || String(r[15])!=='ajustado') return;
     items.push({ date:r[0], ref:r[2], descr:r[3], person:r[4], amount:Number(r[6]||0) });
     // c++;
   // }
@@ -1039,4 +1042,71 @@ function increaseStockOnly_(code, qty){
   var cell = s.getRange(row, 5); // E: Stock
   var v = cell.getValue(); var prev = (typeof toNumBR_==='function') ? toNumBR_(v) : Number(v||0);
   cell.setValue(prev + Number(qty||0));
+}
+
+
+// ====== NEW: Payables (APagar) endpoints ======
+
+// Ensure payments history sheet
+function ensurePagos_(){ return ensureSheet_('Pagos',['Fecha','RefId','Persona','Monto','Nota']); }
+
+// List pending APagar using scan-from-bottom
+function payablesPending_(cursor, limit){
+  var sh=ensureAPagar_(); if(sh.getLastRow()<=1) return ok_({ok:true,items:[],next:null});
+  cursor=Math.max(0,Number(cursor||0)); limit=Math.max(1,Number(limit||5));
+  var got = _scanFromBottom_({
+    sh: sh, lastCol: 7, cursor: cursor, limit: limit, pageSize: 100,
+    rowHandler: function(r, items){
+      if(String(r[5]||'pendiente').toLowerCase()!=='pendiente') return;
+      items.push({ refId:r[0], persona:r[1], cuota:r[2], fecha:r[3], monto:Number(r[4]||0), estado:r[5], nota:r[6] }); 
+    }
+  });
+  // orden por fecha asc (igual que Cobros)
+  got.items = got.items.sort(function(a,b){ return new Date(a.fecha) - new Date(b.fecha); });
+  return ok_({ ok:true, items: got.items, next: got.next });
+}
+
+// Register a payment against APagar (partial or total)
+function payablePay_(refId, cuotaN, amount, note){
+  var sh=ensureAPagar_(), last=sh.getLastRow(); if(last<=1) return ok_({ok:false,error:'APagar empty'});
+  var vals=sh.getRange(2,1,last-1,7).getValues(); var idx=-1;
+  for(var i=0;i<vals.length;i++){
+    if(String(vals[i][0]||'')===String(refId) && Number(vals[i][2]||0)===Number(cuotaN)){ idx=i+2; break; }
+  }
+  if(idx<0) return ok_({ ok:false, error:'cuota not found' });
+  var monto=Number(sh.getRange(idx,5).getValue()||0);
+  var pago = Number(amount||0); if (pago<=0) pago = monto;
+  var persona=String(sh.getRange(idx,2).getValue()||'');
+
+  if (pago >= monto){ sh.getRange(idx,5,1,2).setValues([[0,'pagado']]); }
+  else { sh.getRange(idx,5).setValue(monto - pago); }
+
+  // Historial de pagos (egreso de caja)
+  ensurePagos_().appendRow([ new Date(), refId, persona, pago, String(note||'parcial') ]);
+  addCajaMov_('pago', refId, 'Pago cuota '+cuotaN, persona, '', 0, pago);
+
+  // Materialize Payables decrement (usa Clientes para resolver ID si existe)
+  var cliId=''; try{
+    var cs=sheetByName_('Clientes');
+    if (cs && cs.getLastRow()>1){
+      var rr=cs.getRange(2,1,cs.getLastRow()-1,2).getValues();
+      for (var j=0;j<rr.length;j++){ if (String(rr[j][0]||'')===persona){ cliId=String(rr[j][1]||''); break; } }
+    }
+  }catch(e){}
+  try{ upsertPayable_(cliId||persona, persona, -pago); }catch(e){}
+
+  return { ok:true };
+}
+
+// Payments history (APagar) with scan-from-bottom
+function paymentsHistory_(cursor, limit){
+  var sh=ensurePagos_(); if(sh.getLastRow()<=1) return ok_({ok:true,items:[],next:null});
+  cursor=Math.max(0,Number(cursor||0)); limit=Math.max(1,Number(limit||5));
+  var got = _scanFromBottom_({
+    sh: sh, lastCol: 5, cursor: cursor, limit: limit, pageSize: 100,
+    rowHandler: function(r, items){
+      items.push({ date:r[0], refId:r[1], persona:r[2], monto:Number(r[3]||0), nota:r[4] });
+    }
+  });
+  return ok_({ ok:true, items: got.items, next: got.next });
 }

@@ -9,16 +9,18 @@ import CobrosView from './components/CobrosView'
 import CashIncome from './components/CashIncome'
 import AdjustmentsView from './components/AdjustmentsView'
 import { OverlayProvider, GlobalOverlay } from './overlay/OverlayContext';
+import PagosView from './components/PagosView'
 
-type TabKey = '#caja'|'#importarpdf'|'#venta'|'#stock'|'#cobros'|'#gastos'|'#ingreso'|'#ajustes'
+type TabKey = '#caja'|'#importarpdf'|'#venta'|'#stock'|'#cobros'|'#pagos'|'#gastos'|'#ingreso'|'#ajustes'
 const TABS: { key:TabKey; label:string }[] = [
   { key:'#caja',        label:'Caja' },
   { key:'#importarpdf', label:'Compras' },
   { key:'#venta',       label:'Ventas' },
   { key:'#stock',       label:'Stock' },
   { key:'#cobros',      label:'Cobros' },
+  { key:'#pagos',       label:'Pagos'  },
   { key:'#gastos',      label:'Gastos' },
-  { key:'#ingreso',     label:'Ingresos' },
+  { key:'#ingreso',     label:'Ingresos/Prestamo' },
   { key:'#ajustes',     label:'Ajustes' },
 ]
 
@@ -88,6 +90,7 @@ export default function App(){
         {route==='#venta'       && <SaleTicket />}
         {route==='#stock'       && <StockView />}
         {route==='#cobros'      && <CobrosView />}
+        {route==='#pagos'      && <PagosView />}
         {route==='#gastos'      && <ExpensesView />}
         {route==='#importarpdf' && <PurchaseOCRUpload />}
         {route==='#ingreso'     && <CashIncome />}

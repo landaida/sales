@@ -105,4 +105,9 @@ export class GoogleSheetsRepo implements IRepository {
   adjustList(cursor=0, limit=10){ return this.jget(`action=adjust_list&cursor=${cursor}&limit=${limit}`); }
   adjustApply(moveId=0){ return this.jpost({ action:'adjust_apply', moveId }); }
 
+  // NEW — Payables (APagar)
+  payablesPending(cursor=0, limit=5){ return this.jget(`action=payables_pending&cursor=${cursor}&limit=${limit}`); }
+  paymentsHistory(cursor=0, limit=5){ return this.jget(`action=payments_history&cursor=${cursor}&limit=${limit}`); }
+  payablePay(refId:string, cuotaN:number, amount:number, note?:string){ return this.jpost({ action:'payable_pay', refId, cuotaN, amount, note }); }
+
 }

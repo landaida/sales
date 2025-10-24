@@ -16,7 +16,7 @@ export default function CobrosView(){
     const a=parseLocaleNumber(raw,false);
     // debugger
     // if(a<=0) return; 
-    const r=await repo.receivablePay(tid,n,monto||a); 
+    const r=await repo.receivablePay(tid,n,a||monto); 
     
     alert(r.ok?'Cobro OK':'Error'); 
 
