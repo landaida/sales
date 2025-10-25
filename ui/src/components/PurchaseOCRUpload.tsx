@@ -41,9 +41,24 @@ function MoneyInput({ value, currency, style, onChange }: MoneyInputProps){
   );
 }
 
+async function fileToBase64(file: File): Promise<string>{
+  // Safer than String.fromCharCode(...Uint8Array) -> avoids "too many arguments"
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      try{
+        const res = String(reader.result||''); // "data:application/pdf;base64,AAA..."
+        const comma = res.indexOf(',');
+        resolve(comma >= 0 ? res.slice(comma+1) : res);
+      }catch(err){ reject(err); }
+    };
+    reader.onerror = ()=> reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
 
 type DraftLine = { code:string; name:string; color:string; size:string; barcode:string; qty:number; unitCostRS:number; salePriceGs?:number }
-
 export default function PurchaseOCRUpload(){
   const { withOverlay } = useOverlay();
   const [tab, setTab] = useState<'compra'|'historial'>('compra');
@@ -71,7 +86,8 @@ export default function PurchaseOCRUpload(){
     setBusy(true)
     try{
       // debugger
-      const b64 = await file.arrayBuffer().then(b=> btoa(String.fromCharCode(...new Uint8Array(b))))
+      // const b64 = await file.arrayBuffer().then(b=> btoa(String.fromCharCode(...new Uint8Array(b))))
+      const b64 = await fileToBase64(file);
       const res = await withOverlay(repo.purchaseParse({ filename:file.name, b64 }),'Cargando...')
 
       if(!res?.ok) throw new Error(res?.error||'parse failed')

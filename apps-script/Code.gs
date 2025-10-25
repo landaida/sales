@@ -473,6 +473,11 @@ function purchaseParse_(data){
   // call your proven vendor parser (e.g., parseOXYRIO_)
   var items = [];
   if (supplier==='OXYRIO CONFECCOES LTDA' && typeof parseOXYRIO_==='function') items = parseOXYRIO_(raw);
+  else if (supplier==='GABY MODAS')        items = parseGABYMODAS_(raw);
+  else if (supplier==='VITALLY')           items = parseVITALLY_(raw);
+
+  if (!items || !items.length)
+    return { ok:false, error:'Layout no reconocido o sin ítems.', ocrSample:raw}; // evita el popup genérico
 
   // normalize (unitCostRS=vendor currency, BRL)
   items = (items||[]).map(function(it){
@@ -1017,17 +1022,6 @@ function _scanFromBottom_({sh, lastCol, cursor, limit, pageSize, rowHandler}){
   return { items: items, next: next };
 }
 
-// Al final de Code.gs:
-(function(root){
-  var exportsObj = { _scanFromBottom_: _scanFromBottom_ };
-  if (typeof module !== 'undefined' && module.exports){
-    module.exports = exportsObj;       // Node.js (tests)
-  } else {
-    // Opcional: exponer para depurar en GAS si quieres
-    root.__codeExports__ = exportsObj; // no interfiere con nada
-  }
-})(this);
-
 // increaseStockOnly_: suma en Productos!E sin alterar promedios
 function increaseStockOnly_(code, qty){
   var s = sh_ && sh_('Productos') || SpreadsheetApp.getActive().getSheetByName('Productos');
@@ -1135,3 +1129,15 @@ function pagosMarkStatus_(refId, persona, cuotaN, status){
   }
   return false;
 }
+
+
+// Al final de Code.gs:
+(function(root){
+  var exportsObj = { _scanFromBottom_: _scanFromBottom_ };
+  if (typeof module !== 'undefined' && module.exports){
+    module.exports = exportsObj;       // Node.js (tests)
+  } else {
+    // Opcional: exponer para depurar en GAS si quieres
+    root.__codeExports__ = exportsObj; // no interfiere con nada
+  }
+})(this);
