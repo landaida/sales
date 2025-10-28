@@ -73,8 +73,9 @@ function _sumPendingPayablesForRef_(refId){
 }
 function _amIngreso_(r){
   var id=_amId_('AM-Ingreso');
-  addCajaMov_('AM-Ingreso', id, 'Ajuste ingreso '+r.ref, r.cliente, r.proveedor, 0, Math.max(r.ingreso,0),
-    { subtotal:r.subtotal, descuento:r.descuento, entrega:0, aplazo:0 });
+  // addCajaMov_('AM-Ingreso', id, 'Ajuste ingreso '+r.ref, r.cliente, r.proveedor, 0, Math.max(r.ingreso,0),
+  //   { subtotal:r.subtotal, descuento:r.descuento, entrega:0, aplazo:0 });
+  addCajaMov_('AM-Ingreso', id, 'Ajuste ingreso '+r.ref, r.cliente, r.proveedor, 0, Math.max(r.ingreso,0), { subtotal:r.subtotal, descuento:r.descuento, entrega:0, aplazo:0, apDelta: -pending.sum });
   try{
     var pending=_sumPendingPayablesForRef_(r.ref);
     if (pending.rows.length){
@@ -124,24 +125,6 @@ function _amCompra_(r){
   }catch(e){}
   return { amId:id };
 }
-// function _amVenta_(r){
-//   var id=_amId_('AM-Venta');
-//   var cashOut = Math.max(r.entrega||0,0);
-//   if (cashOut>0){
-//     addCajaMov_('AM-Venta', id, 'Ajuste venta '+r.ref+' (entrega)', r.cliente, '', 0, cashOut, { subtotal:r.subtotal, descuento:r.descuento, entrega:cashOut, aplazo:r.aplazo });
-//   } else {
-//     addCajaMov_('AM-Venta', id, 'Ajuste venta '+r.ref, r.cliente, '', 0, 0, { subtotal:r.subtotal, descuento:r.descuento, entrega:0, aplazo:r.aplazo });
-//   }
-//   var aplazo = Math.max(r.aplazo||0,0);
-//   if (aplazo>0){
-//     try{
-//       var ac=_sh_('ACobrar');
-//       if (ac){ ac.appendRow([ r.ref||('T-'+id), r.cliente, -1, new Date(), -aplazo, 'ajuste', 'AM-Venta' ]); }
-//       upsertReceivable_(r.cliente, r.cliente, -aplazo);
-//     }catch(e){}
-//   }
-//   return { amId:id };
-// }
 function _amGeneric_(r){
   var id=_amId_('AM-Gen');
   var net = Math.max(r.ingreso,0) - Math.max(r.egreso,0);
@@ -155,17 +138,12 @@ function _amGeneric_(r){
   return { amId:id };
 }
 
-// Wiring (añadir en tu webapp):
-// doGet:  if (a==='adjust_list')  return adjustList_(e.parameter.cursor||0, e.parameter.limit||10);
-// doPost: if (a==='adjust_apply') return ok_(adjustApply_(String(data.moveId||'')));
-
-
 function _amPago_(r){
   var id=_amId_('AM-Pago');
   var amount = Math.max(r.egreso||0, 0); // pago original fue egreso
   // 1) Caja: ingreso que revierte el pago
-  addCajaMov_('AM-Pago', id, 'Ajuste pago '+r.ref, r.cliente, '', amount, 0, { subtotal:0, descuento:0, entrega:0, aplazo:0 });
-
+  // addCajaMov_('AM-Pago', id, 'Ajuste pago '+r.ref, r.cliente, '', amount, 0, { subtotal:0, descuento:0, entrega:0, aplazo:0 });
+  addCajaMov_('AM-Pago', id, 'Ajuste pago '+r.ref, r.cliente, '', amount, 0, { subtotal:0, descuento:0, entrega:0, aplazo:0, apDelta: +amount });
   // 2) APagar: restaurar cuota exacta (RefId=r.ref, CuotaN parseado o leído del historial 'Pagos')
   var m = String(r.descr||'').match(/Pago\s+cuota\s+(\d+)/i);
   var cuotaN = m ? Number(m[1]) : null;

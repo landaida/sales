@@ -30,7 +30,7 @@ function ensureCajaMonth_(date){
   }
   return s;
 }
-function cajaAppendWithBalance_(tipo, ref, descr, cliente, proveedor, ingreso, egreso, meta){
+function cajaAppendWithBalance_old(tipo, ref, descr, cliente, proveedor, ingreso, egreso, meta){
   var sh = cajaEnsureExtended_();
   var prev = cajaGetLastBalance_();
   var inN = Number(ingreso||0), outN = Number(egreso||0);
@@ -48,6 +48,7 @@ function cajaAppendWithBalance_(tipo, ref, descr, cliente, proveedor, ingreso, e
   var m = ensureCajaMonth_(row[0]); m.appendRow(row);
   return moveId;
 }
+
 // Receivables
 function ensureReceivables_(){
   var s = _sheet_('Receivables'); if (!s){
@@ -110,4 +111,79 @@ function upsertReceivable_(clientId, name, deltaGs){
   cell.setValue(prev + Number(deltaGs||0));
   sh.getRange(row,4).setValue(new Date());
   return true;
+}
+
+// Ensure extra running balances columns exist at the end of Caja/Caja-YYYY-MM
+function cajaEnsureARAPCols_(sh){
+  if (!sh) return;
+  var need = ['ReceivablesAfterGs', 'PayablesAfterGs'];
+  var lastCol = sh.getLastColumn();
+  var H = sh.getRange(1,1,1,lastCol).getValues()[0];
+  // Si ya están, no hacemos nada
+  if (H.indexOf('ReceivablesAfterGs')>=0 && H.indexOf('PayablesAfterGs')>=0) return;
+  // Expand sheet y escribe headers al final
+  sh.insertColumnsAfter(lastCol, 2);
+  sh.getRange(1,lastCol+1,1,2).setValues([need]);
+}
+
+function cajaEnsureARAPColsMonth_(date){
+  var s = ensureCajaMonth_(date||new Date());
+  cajaEnsureARAPCols_(s);
+}
+
+function cajaAppendWithBalance_(tipo, ref, descr, cliente, proveedor, ingreso, egreso, meta){
+  // 1) Asegura columnas base + extra + status
+  var sh = cajaEnsureExtended_();
+  try{ cajaEnsureStatus_(); }catch(_){}
+  cajaEnsureARAPCols_(sh);
+
+  // 2) Balances previos
+  var lastRow = sh.getLastRow();
+  var prevCash = (lastRow>1) ? Number(sh.getRange(lastRow, 13).getValue()||0) : 0;      // BalanceAfterGs
+  // Columnas 16 y 17 podrían no existir en las primeras filas; si no, arrancamos en 0.
+  var prevAR   = (lastRow>1 && sh.getLastColumn()>=16) ? Number(sh.getRange(lastRow, 16).getValue()||0) : 0;
+  var prevAP   = (lastRow>1 && sh.getLastColumn()>=17) ? Number(sh.getRange(lastRow, 17).getValue()||0) : 0;
+
+  // 3) Deltas
+  var inN  = Number(ingreso||0), outN = Number(egreso||0);
+  var arΔ  = 0, apΔ = 0;
+
+  // Heurísticas por tipo + meta
+  // Venta con aplazo -> AR+
+  if (String(tipo)==='venta' && meta && Number(meta.aplazo||0)>0) arΔ += Number(meta.aplazo||0);
+  // Cobro -> AR- (ingreso)
+  if (String(tipo)==='cobro') arΔ -= inN;
+  // AM-Cobro (reversa del cobro) -> AR+ (usamos meta.aplazo si lo pasaste)
+  if (String(tipo)==='AM-Cobro' && meta && Number(meta.aplazo||0)>0) arΔ += Number(meta.aplazo||0);
+  // Pago (egreso) -> AP- 
+  if (String(tipo)==='pago') apΔ -= outN;
+  // Nota: AM-Venta / AM-Ingreso / AM-Pago pasan arΔ/apΔ explícito en meta (si existen)
+  if (meta && typeof meta.arDelta==='number') arΔ += Number(meta.arDelta||0);
+  if (meta && typeof meta.apDelta==='number') apΔ += Number(meta.apDelta||0);
+
+  // 4) Nuevos balances
+  var newCash = prevCash + inN - outN;
+  var newAR   = prevAR   + arΔ;
+  var newAP   = prevAP   + apΔ;
+
+  // 5) Fila
+  var moveId = 'M-'+Utilities.formatDate(new Date(), Session.getScriptTimeZone(),'yyyyMMddHHmmss')+'-'+(Math.random()*1e6|0);
+  var row = [ new Date(), String(tipo||''), String(ref||''), String(descr||''),
+    String(cliente||''), String(proveedor||''), inN, outN,
+    0,0,0,0, newCash, moveId, 'activo', newAR, newAP ];
+  if (meta){
+    row[8]  = Number(meta.subtotal||0);
+    row[9]  = Number(meta.descuento||0);
+    row[10] = Number(meta.entrega||0);
+    row[11] = Number(meta.aplazo||0);
+  }
+  sh.appendRow(row);
+
+  // 6) Espejo mensual
+  var m = ensureCajaMonth_(row[0]); 
+  try{ cajaEnsureStatusMonth_(row[0]); }catch(_){}
+  cajaEnsureARAPColsMonth_(row[0]);
+  m.appendRow(row);
+
+  return moveId;
 }

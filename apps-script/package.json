@@ -1,0 +1,11 @@
+{
+  "scripts": {
+    "push:dev": "cd ./dev  && npx clasp push",
+    "push:prod": "cd ./prod && npx clasp push",
+    "status:dev": "cd ./dev  && npx clasp status",
+    "status:prod": "cd ./prod && npx clasp status"
+  },
+  "devDependencies": {
+    "@google/clasp": "^2.4.2"
+  }
+}

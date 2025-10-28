@@ -665,16 +665,13 @@ function addCajaMov_(tipo, ref, descr, cliente, proveedor, ingreso, egreso, meta
 function cashboxSummary_(){
   cajaEnsureExtended_();
   var sh = SpreadsheetApp.getActive().getSheetByName('Caja');
-  var cashOnHand = 0;
-  if (sh && sh.getLastRow()>1){
-    cashOnHand = Number(sh.getRange(sh.getLastRow(), 13).getValue()||0); // BalanceAfterGs
-  }
-  var rec = SpreadsheetApp.getActive().getSheetByName('Receivables'), ar=0;
-  if (rec && rec.getLastRow()>1){
-    var vals = rec.getRange(2,3,rec.getLastRow()-1,1).getValues();
-    for (var i=0;i<vals.length;i++) ar += Number(vals[i][0]||0);
-  }
-  return ok_({ ok:true, cashOnHand: cashOnHand, receivablesTotal: ar });
+  if(!sh||sh.getLastRow()<=1) return ok_({ ok:true, cashOnHand: 0, receivablesTotal:0, payablesTotal:0 });
+
+  var cashOnHand = Number(sh.getRange(sh.getLastRow(), 13).getValue()||0); // BalanceAfterGs
+  var ar = Number(sh.getRange(sh.getLastRow(), 16).getValue()||0); //ReceivablesAfterGs
+  var payablesTotal = Number(sh.getRange(sh.getLastRow(), 17).getValue()||0); //PayablesAfterGs
+
+  return ok_({ ok:true, cashOnHand: cashOnHand, receivablesTotal: ar, payablesTotal });
 }
 
 function cashboxMoves_(cursor, limit){
@@ -790,7 +787,8 @@ function receivablePay_(ticketId, cuotaN, amount, note){
   else { sh.getRange(idx,5).setValue(monto - pago); }
 
   ensureCobros_().appendRow([ new Date(), ticketId, cliente, pago, String(note||'parcial') ]);
-  addCajaMov_('cobro', ticketId, 'Cobro cuota '+cuotaN, cliente, '', pago, 0);
+  // addCajaMov_('cobro', ticketId, 'Cobro cuota '+cuotaN, cliente, '', pago, 0);
+  addCajaMov_('cobro', ticketId, 'Cobro cuota '+cuotaN, cliente, '', pago, 0, { arDelta: -pago });
 
   // Resolve clientId from Clientes
   var cliId=''; try{
@@ -832,24 +830,6 @@ function saleDetails_(ticket){
 
 }
 
-// function cashIncome_(data){
-//   var now=new Date();
-//   var persona=String(data.person||'').trim(); if(!persona) return ok_({ok:false,error:'person required'});
-//   var amount=Math.max(0, Number(data.amount||0)); if(amount<=0) return ok_({ok:false,error:'amount<=0'});
-//   var descr=String(data.descr||'Ingreso');
-//   var n=Math.max(0, Number(data.numCuotas||0));
-//   var kind=String(data.kind||'mensual').toLowerCase();
-//   var refId='IN-'+Utilities.formatDate(now,Session.getScriptTimeZone(),'yyyyMMddHHmmss');
-
-//   addCajaMov_('ingreso', refId, descr, persona, '', amount, 0, {subtotal:amount, descuento:0, entrega:amount, aplazo:0});
-//   if (n>0){
-//     var per=Math.floor(amount/n), resto=amount-per*n, base=new Date(now);
-//     for (var i=1;i<=n;i++){ var d=new Date(base); if(kind==='semanal') d.setDate(d.getDate()+i*7); else d.setMonth(d.getMonth()+i);
-//       addPayable_(refId, persona, i, d, per+(i<=resto?1:0)); }
-//   }
-//   return ok_({ ok:true, refId, amount, n });
-// }
-
 function cashIncome_(data){
   var now=new Date();
   var persona=String(data.person||'').trim(); if(!persona) return ok_({ok:false,error:'person required'});
@@ -861,7 +841,7 @@ function cashIncome_(data){
   var kind=String(data.kind||'mensual').toLowerCase();
   var refId='IN-'+Utilities.formatDate(now,Session.getScriptTimeZone(),'yyyyMMddHHmmss');
 
-  addCajaMov_('ingreso', refId, descr, persona, '', amount, 0, {subtotal:amount, descuento:0, entrega:amount, aplazo:0});
+  // addCajaMov_('ingreso', refId, descr, persona, '', amount, 0, {subtotal:amount, descuento:0, entrega:amount, aplazo:0});
   if (n>0){
     var per=Math.floor(amount/n), resto=amount-per*n, base=new Date(now);
     var total=0;
@@ -869,6 +849,7 @@ function cashIncome_(data){
       var m=per+(i<=resto?1:0); total+=m; addPayable_(refId, persona, i, d, m); }
     try{ upsertPayable_(clientId||persona, persona, total); }catch(e){}
   }
+  addCajaMov_('ingreso', refId, descr, persona, '', amount, 0, { subtotal:amount, descuento:0, entrega:amount, aplazo:0, apDelta: total });
   return ok_({ ok:true, refId, amount, n });
 }
 
@@ -1078,7 +1059,8 @@ function payablePay_(refId, cuotaN, amount, note){
 
   // Historial de pagos (egreso de caja)
   ensurePagos_().appendRow([ new Date(), refId, persona, Number(cuotaN||0), pago, String(note||'parcial'), 'activo' ]);
-  addCajaMov_('pago', refId, 'Pago cuota '+cuotaN, persona, '', 0, pago);
+  // addCajaMov_('pago', refId, 'Pago cuota '+cuotaN, persona, '', 0, pago);
+  addCajaMov_('pago', refId, 'Pago cuota '+cuotaN, persona, '', 0, pago, { apDelta: -pago });
 
   // Materialize Payables decrement (usa Clientes para resolver ID si existe)
   var cliId=''; try{

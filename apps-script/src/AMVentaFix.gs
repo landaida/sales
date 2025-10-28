@@ -24,13 +24,15 @@ function _amVenta_(r){
   // 1) Caja (egreso si hubo entrega/contado)
   var cashOut = Math.max(r.entrega||0,0);
   if (cashOut>0){
-    addCajaMov_('AM-Venta', id, 'Ajuste venta '+r.ref+' (entrega)', r.cliente, '', 0, cashOut, {
-      subtotal:r.subtotal, descuento:r.descuento, entrega:cashOut, aplazo:r.aplazo
-    });
+    // addCajaMov_('AM-Venta', id, 'Ajuste venta '+r.ref+' (entrega)', r.cliente, '', 0, cashOut, {
+    //   subtotal:r.subtotal, descuento:r.descuento, entrega:cashOut, aplazo:r.aplazo
+    // });
+    addCajaMov_('AM-Venta', id, 'Ajuste venta '+r.ref+' (entrega)', r.cliente, '', 0, cashOut, { subtotal:r.subtotal, descuento:r.descuento, entrega:cashOut, aplazo:r.aplazo, arDelta: delta });
   } else {
-    addCajaMov_('AM-Venta', id, 'Ajuste venta '+r.ref, r.cliente, '', 0, 0, {
-      subtotal:r.subtotal, descuento:r.descuento, entrega:0, aplazo:r.aplazo
-    });
+    // addCajaMov_('AM-Venta', id, 'Ajuste venta '+r.ref, r.cliente, '', 0, 0, {
+    //   subtotal:r.subtotal, descuento:r.descuento, entrega:0, aplazo:r.aplazo
+    // });
+    addCajaMov_('AM-Venta', id, 'Ajuste venta '+r.ref, r.cliente, '', 0, 0, { subtotal:r.subtotal, descuento:r.descuento, entrega:0, aplazo:r.aplazo, arDelta: delta });
   }
 
   // 2) ACobrar: anular cuotas pendientes del ticket (sin montar negativos)

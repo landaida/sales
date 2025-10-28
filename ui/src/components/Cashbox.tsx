@@ -14,7 +14,7 @@ export default function Cashbox(){
   const [ar,setAr]=React.useState<any[]>([]); const [who,setWho]=React.useState<string>(''); const [rows,setRows]=React.useState<any[]>([]);
   React.useEffect(()=>{ (async()=>{
     moreMoves()
-    moreACobrarByClient()
+    // moreACobrarByClient()
     setSum(await repo.cashbox());
   })() },[]);
   async function moreMoves(){ if(busy||cursor===null) return; setBusy(true); 
@@ -32,6 +32,7 @@ export default function Cashbox(){
     <div style={{display:'flex',gap:24,marginBottom:12}}>
       <div><b>Efectivo:</b> {fmtGs.format(sum?.cashOnHand||0)}</div>
       <div><b>Por cobrar:</b> {fmtGs.format(sum?.receivablesTotal||0)}</div>
+      <div><b>A pagar:</b> {fmtGs.format(sum?.payablesTotal||0)}</div>
     </div>
 
     <h3>Movimientos</h3>
@@ -74,15 +75,15 @@ export default function Cashbox(){
 </tbody></table>
     {cursor!==null && <button onClick={moreMoves} disabled={busy} style={{marginTop:8}}>{busy?'Cargando...':'Cargar más'}</button>}
 
-    <h3 style={{marginTop:20}}>Cuentas por cobrar (por cliente)</h3>
+    {/* <h3 style={{marginTop:20}}>Cuentas por cobrar (por cliente)</h3>
     <ul>{ar.map((a:any,i:number)=>(<li key={i}><a href="#" onClick={e=>{e.preventDefault();open(a.cliente)}}>{a.cliente}</a>: <b>{fmtGs.format(a.total)}</b></li>))}</ul>
     
-    {cursorAr!==null && <button onClick={moreACobrarByClient} disabled={busyAr} style={{marginTop:8}}>{busyAr?'Cargando...':'Cargar más'}</button>}
+    {cursorAr!==null && <button onClick={moreACobrarByClient} disabled={busyAr} style={{marginTop:8}}>{busyAr?'Cargando...':'Cargar más'}</button>} */}
 
-    {!!who && <div style={{border:'1px solid #ddd',borderRadius:6,padding:8,marginTop:8}}>
+    {/* {!!who && <div style={{border:'1px solid #ddd',borderRadius:6,padding:8,marginTop:8}}>
       <b>Detalle de {who}</b>
       <table style={{width:'100%',marginTop:6}}><thead><tr><th>Ticket</th><th>Cuota</th><th>Fecha</th><th style={{textAlign:'right'}}>Monto</th><th>Estado</th></tr></thead>
       <tbody>{rows.map((d:any,i:number)=>(<tr key={i}><td>{d.ticketId}</td><td>{d.cuota}</td><td>{new Date(d.fecha).toLocaleDateString()}</td><td style={{textAlign:'right'}}>{fmtGs.format(d.monto||0)}</td><td>{d.estado}</td></tr>))}</tbody></table>
-    </div>}
+    </div>} */}
   </section>);
 }

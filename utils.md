@@ -64,6 +64,7 @@ npm run dev
 * **Minimiza el diff** (nada de renombrar variables/funciones por estilo si no se pidió).
 * **Minimiza el diff** (no mover la function de lugar en el archivo o en archivos diferentes, estás moviendo siempre functions de archivos especificos como StockWritePatch.gs a Code.gs, lo hiciste varias veces con `applySaleToStock_`).
 * ***Obviamente que siempre prefiero nombres como `sheetByName_`, `ensureProductRow_` y sin la necesidad que todos esten en `Code.gs`, podrian estar en otras clases helpers.
+* En este punto me encanta cuando me pides que modifique en lo mínimo archivos extensos como Code.gs y me mandas patches como CajaReceivablesPatch.gs,excelente idea y solución para minimizar el diff.
 ```
 
 
@@ -105,3 +106,15 @@ find . -type f \
   cat "$file" >> combined.txt
   echo -e "\n\n\`\`\`" >> combined.txt
 done
+
+
+
+# google app scripts CLI
+# push and deploy 
+npx clasp push
+npx clasp version "deploy $(date +%F_%T)"
+DEPLOY_ID=$(cat .deployid)
+npx clasp deploy --deploymentId "$DEPLOY_ID" --description "redeploy $(date +%F_%T)"
+
+# see existing versions 
+npx clasp deployments
