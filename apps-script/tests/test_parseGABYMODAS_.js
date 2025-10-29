@@ -42,6 +42,7 @@ const data = `1/2 \nGABY MODAS - LOJA 44 Pag.: \n Rua José Sinimbu Filho, Bairr
         ['==', 'no.00078', items.some(it => it.code === '00078') ? 1 : 0, 0],
         ['==', 'no.00016', items.some(it => it.code === '00016') ? 1 : 0, 0],
         ['==', 'no.00035', items.some(it => it.code === '00035') ? 1 : 0, 0],
+        ['==', 'no.color.VRDE', items.some(it => it.color.includes('VRDE')) ? 1 : 0, 0],
         ['==', 'has.251.ean', items.some(it => it.code === '251' && it.color === 'OFF' && it.size === 'G' && it.qty === 3) ? 1 : 0, 1],
         ['==', 'has.13.ean', items.some(it => it.code === '13' && it.color === 'AZUL BB' && it.size === 'G' && it.qty === 1) ? 1 : 0, 1],
         ['==', 'has.13.ean', items.some(it => it.code === '13' && it.color === 'PRETO' && it.size === 'M' && it.qty === 1) ? 1 : 0, 1],

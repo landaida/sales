@@ -459,6 +459,7 @@ function ocrTextFromPdfFile_(fileId){
 function purchaseParse_(data){
   var saved = savePdfToDrive_(data.b64, data.filename||'compra.pdf');
   var raw   = ocrTextFromPdfFile_(saved.fileId);
+  raw = normalizePurchaseOCRText_(raw);
   var H     = raw.toUpperCase();
 
   // detect supplier only if not provided
