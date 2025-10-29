@@ -50,6 +50,7 @@ export async function generateInvoicePdf(inv: Invoice){
   doc.setLineWidth(0.5); doc.line(margin, y, pageW-margin, y); y += 12
 
   doc.setFont('helvetica','normal')
+  /*
   // Rows
   inv.items.forEach((it)=>{
     const row = [
@@ -62,35 +63,111 @@ export async function generateInvoicePdf(inv: Invoice){
       fmtGs((it.qty||0)*(it.unitGs||0))
     ]
     x = margin
-    for(let i=0;i<row.length;i++){
-      const cell = row[i]
-      const maxWidth = colW[i]-4
-      // Simple wrap for the name column
-      if(i===1){
-        const split = doc.splitTextToSize(cell, maxWidth)
-        split.forEach((line,idx)=>{
-          doc.text(line, x, y + idx*lineH*0.85)
-        })
-        // advance y to the last printed line
-        const extra = (split.length-1)*lineH*0.85
-        // Draw other cells at baseline
-        let x2 = margin + colW[0]
-        ;[2,3,4,5,6].forEach((j,idx)=>{
-          const txt = row[j]
-          doc.text(txt, x2, y)
-          x2 += colW[j]
-        })
-        y += Math.max(lineH, extra + lineH)
-      }else if(i!==1){
-        doc.text(cell, x, y)
-      }
-      x += colW[i]
-    }
+    // for(let i=0;i<row.length;i++){
+    //   const cell = row[i]
+    //   const maxWidth = colW[i]-4
+    //   // Simple wrap for the name column
+    //   if(i===1){
+    //     const split = doc.splitTextToSize(cell, maxWidth)
+    //     split.forEach((line,idx)=>{
+    //       doc.text(line, x, y + idx*lineH*0.85)
+    //     })
+    //     // advance y to the last printed line
+    //     const extra = (split.length-1)*lineH*0.85
+    //     // Draw other cells at baseline
+    //     let x2 = margin + colW[0]
+    //     ;[2,3,4,5,6].forEach((j,idx)=>{
+    //       const txt = row[j]
+    //       doc.text(txt, x2, y)
+    //       x2 += colW[j]
+    //     })
+    //     y += Math.max(lineH, extra + lineH)
+    //   }else if(i!==1){
+    //     doc.text(cell, x, y)
+    //   }
+    //   x += colW[i]
+    // }
+
+
+    // code
+    let xi = margin;
+    doc.text(String(row[0] ?? ''), xi, y); xi += colW[0];
+
+    // name con wrap
+    const lines = doc.splitTextToSize(String(row[1] ?? ''), colW[1]-4);
+    lines.forEach((ln, k)=> doc.text(String(ln||''), xi, y + k*lineH*0.85));
+    const rowH = Math.max(lineH, lines.length*lineH*0.85);
+    xi += colW[1];
+
+    // demás columnas a la línea base
+    let x2 = xi;
+    [2,3,4,5,6].forEach(j => { doc.text(String(row[j] ?? ''), x2, y); x2 += colW[j]; });
+
+    // avanza Y
+    y += rowH;
+
+
+
     // Page break
     if (y > doc.internal.pageSize.getHeight() - 180){
       doc.addPage(); y = margin
     }
   })
+  */
+ // ---- Rows ----
+inv.items.forEach((it)=>{
+  const row = [
+    safe(it.code),
+    safe(it.name),
+    safe(it.color||''),
+    safe(it.size||''),
+    String(it.qty||0),
+    fmtGs(it.unitGs||0),
+    fmtGs((it.qty||0)*(it.unitGs||0))
+  ];
+
+  // x de inicio de cada columna (acumulado)
+  const colX = [margin];
+  for (let i = 1; i < colW.length; i++) colX[i] = colX[i-1] + colW[i-1];
+
+  // Wrap en columnas de texto largas
+  const nameLines  = doc.splitTextToSize(String(row[1]||''), Math.max(10, colW[1]-4));
+  const colorLines = doc.splitTextToSize(String(row[2]||''), Math.max(10, colW[2]-4));
+
+  // Altura de la fila = max(líneas envueltas) con el mismo factor usado
+  const linesCount = Math.max(nameLines.length, colorLines.length, 1);
+  const rowH = Math.max(lineH, linesCount * lineH * 0.85);
+
+  // Código (una línea)
+  doc.text(String(row[0]||''), colX[0], y);
+
+  // Producto (envuelto)
+  nameLines.forEach((ln, k) => {
+    doc.text(String(ln||''), colX[1], y + k*lineH*0.85);
+  });
+
+  // Color (envuelto)
+  colorLines.forEach((ln, k) => {
+    doc.text(String(ln||''), colX[2], y + k*lineH*0.85);
+  });
+
+  // Talla, Cant. (una línea, arriba)
+  doc.text(String(row[3]||''), colX[3], y);
+  doc.text(String(row[4]||''), colX[4], y);
+
+  // Unit y Total alineados a la derecha dentro de su columna
+  doc.text(String(row[5]||''), colX[5] + colW[5] - 4, y, { align: 'right' });
+  doc.text(String(row[6]||''), colX[6] + colW[6] - 4, y, { align: 'right' });
+
+  // avanzar y según la altura real de la fila
+  y += rowH;
+
+  // salto de página
+  if (y > doc.internal.pageSize.getHeight() - 180){
+    doc.addPage(); y = margin;
+  }
+});
+
 
   y += 6; doc.line(margin, y, pageW-margin, y); y += 18
 

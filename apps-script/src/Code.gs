@@ -825,7 +825,7 @@ function saleDetails_(ticket){
 
   let {items, next} = _scanFromBottom_({sh, lastCol:22, cursor:0, limit:100, pageSize:100, rowHandler:(r, items)=>{
     if(String(r[12]||'')!==String(ticket)) return;
-    items.push({ producto:r[2], qty:r[3], unit:r[4], total:r[5], desc:r[16] })
+    items.push({ producto:r[2], qty:r[3], unit:r[4], total:r[5], desc:r[16], code:r[18], color:r[19], size:r[20] })
   }});
   return ok_({ok:true,items, next });
 

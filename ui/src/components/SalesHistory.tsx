@@ -100,7 +100,7 @@ export default function SalesHistory(){
               <table style={{marginTop:8, width:'100%', borderCollapse:'collapse'}}>
                 <thead><tr><th>Producto</th><th>Cant</th><th style={{textAlign:'center'}}>Total</th><th style={{textAlign:'center'}}>Desc$</th></tr></thead>
                 <tbody>{details[h.ticket].map((l:any,ix:number)=>(
-                  <tr key={ix}><td>{l.producto}</td><td>{l.qty}</td><td style={{textAlign:'right'}}>{fmtGs.format(l.total||0)}</td><td style={{textAlign:'right'}}>{fmtGs.format(l.desc||0)}</td></tr>
+                  <tr key={ix}><td>{l.code} {l.producto} {l.color} {l.size}</td><td>{l.qty}</td><td style={{textAlign:'right'}}>{fmtGs.format(l.total||0)}</td><td style={{textAlign:'right'}}>{fmtGs.format(l.desc||0)}</td></tr>
                 ))}</tbody>
               </table>
             )}
