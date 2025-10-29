@@ -1,3 +1,4 @@
+import { generateInvoicePdf } from '../pdf/generateInvoice'
 import React, { useEffect, useState } from 'react'
 import { fmtGs } from '../utils/money'
 import { useOverlay } from '../overlay/OverlayContext';
@@ -11,6 +12,56 @@ export default function SalesHistory(){
   const [cursor,setCursor] = useState<number|null>(0)
   const [busy,setBusy] = useState(false)
   const [details,setDetails] = useState<Record<string, any[]>>({})
+
+  async function onGenerate(row:any){
+    // debugger
+  try{
+    setBusy(true)
+    const ticketId = String(row.ref || row.ticketId || row.id || row.ticket || '').trim()
+    const date = row.date ? new Date(row.date) : new Date()
+    const clientName = String(row.cliente || row.client || row.persona || '').trim()
+
+    // Intento de cargar detalle desde backend (función puede variar por tu repo)
+    let details:any = null
+    // try{
+    //   if (typeof (repo as any).saleDetails === 'function'){
+    //     details = await (repo as any).saleDetails(ticketId)
+    //   }else if(typeof (repo as any).sale_detail === 'function'){
+    //     details = await (repo as any).sale_detail(ticketId)
+    //   }else if(typeof (repo as any).receiptsByTicket === 'function'){
+    //     details = await (repo as any).receiptsByTicket(ticketId)
+    //   }
+    // }catch(e){ /* continua con row si no hay detalles */ }
+    const r = await withOverlay(repo.salesHistoryDetails(ticketId),'Cargando...')
+    details = r
+    const lines = (details?.items || details?.lines || row?.items || []).map((it:any)=> ({
+      code: String(it.code||it.codigo||''),
+      name: String(it.name||it.producto||it.title||''),
+      color: it.color||'',
+      size: it.size||'',
+      qty: Number(it.qty||it.cantidad||1),
+      unitGs: Number(it.unitGs||it.unit||it.precioGs||it.priceGs||0)
+    }))
+
+    const subtotalGs  = Number(details?.subtotalGs ?? row?.subtotalGs ?? 0)
+    const descuentoGs = Number(details?.descuentoGs ?? row?.descuentoGs ?? 0)
+    const entregaGs   = Number(details?.entregaGs   ?? row?.entregaGs   ?? 0)
+    const aplazoGs    = Number(details?.aplazoGs    ?? row?.aplazoGs    ?? 0)
+    let totalGs       = Number(details?.totalGs     ?? row?.totalGs     ?? 0)
+    if(!totalGs){
+      const sum = lines.reduce((s,it)=> s + (it.qty * it.unitGs), 0)
+      totalGs = Math.max(0, Math.round(sum - descuentoGs))
+    }
+
+    await generateInvoicePdf({
+      ticketId, date, clientName,
+      subtotalGs, descuentoGs, entregaGs, aplazoGs, totalGs,
+      items: lines
+    })
+  }finally{
+    setBusy(false)
+  }
+}
 
   async function load(){
     if (busy || cursor===null) return
@@ -43,6 +94,7 @@ export default function SalesHistory(){
                 </span>
               </div>
               <button onClick={()=>toggle(h.ticket)}>{details[h.ticket]?'Ocultar':'Ver detalles'}</button>
+              <button style={{marginLeft:8}} onClick={()=>onGenerate(h)} disabled={busy}>Generar factura</button>
             </div>
             {details[h.ticket] && (
               <table style={{marginTop:8, width:'100%', borderCollapse:'collapse'}}>

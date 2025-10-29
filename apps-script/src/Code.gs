@@ -472,7 +472,7 @@ function purchaseParse_(data){
 
   // call your proven vendor parser (e.g., parseOXYRIO_)
   var items = [];
-  if (supplier==='OXYRIO CONFECCOES LTDA' && typeof parseOXYRIO_==='function') items = parseOXYRIO_(raw);
+  if (supplier==='OXYRIO CONFECCOES LTDA')  items = parseOXYRIO_(raw, 'PZ');
   else if (supplier==='GABY MODAS')        items = parseGABYMODAS_(raw);
   else if (supplier==='VITALLY')           items = parseVITALLY_(raw);
 
@@ -828,6 +828,23 @@ function saleDetails_(ticket){
   }});
   return ok_({ok:true,items, next });
 
+
+  // var sh=sheetByName_('Caja'); 
+  // if(!sh||sh.getLastRow()<=1) return ok_({ ok:true, items:[], next:null });
+  // // var rows=sh.getRange(2,1,sh.getLastRow()-1,12).getValues(); rows.reverse();
+  // // var out=[], n=0; 
+
+  // var {items, next} = _scanFromBottom_({sh, lastCol:16, cursor:0, limit:100, pageSize:100, rowHandler:(r, items)=>{
+  // // for (var i=cursor;i<rows.length && out.length<limit;i++){
+  //   // var r=rows[i]; 
+  //   if(String(r[2]||'')!==String(ticket)) return;
+  //   items.push({ date:r[0], tipo:r[1], ref:r[2], descr:r[3],
+  //     cliente:r[4], proveedor:r[5], ingreso:Number(r[6]||0), egreso:Number(r[7]||0), subtotal:Number(r[8]||0), descuento:Number(r[9]||0), entrega:Number(r[10]||0), aplazo:Number(r[11]||0), status: String(r[14]||'').trim() || 'activo' }); 
+  //     // n++; 
+  // // }
+  // }});
+  // return ok_({ ok:true, items, next });
+
 }
 
 function cashIncome_(data){
@@ -926,16 +943,22 @@ function listSalesHistory_(cursor, limit){
   var sh=ensureSheet_('Ventas',[]); if(sh.getLastRow()<=1) return ok_({ok:true,items:[],next:null});
   // var rows=sh.getRange(2,1,sh.getLastRow()-1,22).getValues(); rows.reverse();
 
-  const downByTicket={}, statusByTicket={};
+  let downByTicket=[], statusByTicket={};
   var caja=ensureCaja_();
   if(caja.getLastRow()>1){
-    var c=caja.getRange(2,1,caja.getLastRow()-1,12).getValues();
-    c.forEach(function(r){ if(String(r[1])==='venta'){ 
-      var ref=String(r[2]||''); 
-      var ent=Number(r[10]||r[6]||0); 
-      downByTicket[ref]=(downByTicket[ref]||0)+ent;
-      statusByTicket[ref]=r[15]
-    } });
+    // var c=caja.getRange(2,1,caja.getLastRow()-1,12).getValues();
+    // c.forEach(function(r){ if(String(r[1])==='venta'){ 
+    //   var ref=String(r[2]||''); 
+    //   var ent=Number(r[10]||r[6]||0); 
+    //   downByTicket[ref]=(downByTicket[ref]||0)+ent;
+    //   statusByTicket[ref]=r[15]
+    // } });
+
+    var {items, next} = _scanFromBottom_({sh:caja, lastCol:16, cursor:0, limit:100, pageSize:100, rowHandler:(r, items)=>{
+      if(String(r[1])!=='venta') return;
+      items.push({ ref:r[2], ingreso:Number(r[6]||0), egreso:Number(r[7]||0), subtotal:Number(r[8]||0), descuento:Number(r[9]||0), entrega:Number(r[10]||0), aplazo:Number(r[11]||0) }); 
+    }});
+    downByTicket = items
   }
 
   var out=[], scan=cursor;
@@ -944,12 +967,13 @@ function listSalesHistory_(cursor, limit){
   // for(; scan<rows.length && out.length<limit; scan++){
     var ticket=String(r[12]||''); if(!ticket||seen[ticket]) return; seen[ticket]=1;
     // var subset=items.filter(rr=> String(rr[12]||'')===ticket);
-    var subtotal=0, desc=0, fecha=r[0], cliente=r[1];
+    var summary = downByTicket.find(it=> it.ref === ticket) || { entrega:0, aplazo:0, descuento:0 }
+    var subtotal=Number(summary.subtotal||0), desc=Number(summary.descuento||0), fecha=r[0], cliente=r[1];
     // subset.forEach(rr=>{ subtotal+=Number(rr[5]||0); desc += Number(rr[16]||0); });
     var total=Math.max(0, subtotal - desc);
-    var entrega=downByTicket[ticket]||0;
-    var aplazo=Math.max(0, total - entrega);
-    items.push({ date:fecha, ticket, cliente, subtotal, descuento:desc, entrega, aplazo, total, status: statusByTicket[ticket] || 'activo' });
+    var entrega=Number(summary.entrega||0);
+    var aplazo=Number(summary.aplazo||0);
+    items.push({ date:fecha, ticket, cliente, subtotal:Number(summary.subtotal||0), descuento:Number(summary.descuento||0), entrega, aplazo, total, status: statusByTicket[ticket] || 'activo' });
   // }
   }});
   // var next=(scan<rows.length)? scan : null;         // <<-- puntero scan
@@ -1115,7 +1139,7 @@ function pagosMarkStatus_(refId, persona, cuotaN, status){
 
 // Al final de Code.gs:
 (function(root){
-  var exportsObj = { _scanFromBottom_: _scanFromBottom_ };
+  var exportsObj = { _scanFromBottom_: _scanFromBottom_, listSalesHistory_, ensureSheet_ };
   if (typeof module !== 'undefined' && module.exports){
     module.exports = exportsObj;       // Node.js (tests)
   } else {

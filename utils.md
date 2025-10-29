@@ -118,3 +118,53 @@ npx clasp deploy --deploymentId "$DEPLOY_ID" --description "redeploy $(date +%F_
 
 # see existing versions 
 npx clasp deployments
+
+
+
+
+rm -f combined.txt combined.*.txt combined.zip
+
+# Stream all selected files, then split into 500-line chunks, then zip
+find . -type f \
+  -not -path "*/node_modules/*" \
+  -not -path "*/temp/*" \
+  -not -path "*/dist/*" \
+  -not -path "*/.github/*" \
+  -not -path "*/.vscode/*" \
+  -not -path "*/bkp/*" \
+  -not -path "*/.git/*" \
+  -not -path "*/__pycache__/*" \
+  -not -name "*.txt" \
+  -not -name "package-lock.json" \
+  -not -name "*.tar.gz" \
+  -not -name "*.zip" \
+  -not -name "*.npmrc" \
+  -not -name "*.gitignore" \
+  -not -name "*package.json" \
+  -not -name "*LICENSE" \
+  -not -name "*deploy.sh" \
+  -not -name "*.env*" \
+  -not -name "*vite.config.ts" \
+  -not -name "*tsconfig.json" \
+  -not -name "*.xlsx" \
+  -not -name "*example*" \
+  -not -name "*.pt" \
+  -not -name "*.png" \
+  -not -name "*.xpi" \
+  -not -name "*.log" \
+  -not -name "*.md" \
+  -print0 \
+| while IFS= read -r -d '' file; do
+    printf '\n===== %s =====\n' "$file"
+    cat "$file"
+    printf '\n\n```\n'
+  done \
+| split -l 2000 -d -a 1 --additional-suffix=.txt - "combined."
+
+# Zip all parts
+if compgen -G "combined.*.txt" > /dev/null; then
+  zip -q -9 combined.zip combined.*.txt
+  echo "✅ combined.zip creado."
+else
+  echo "⚠️ No se generaron partes para comprimir."
+fi
