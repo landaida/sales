@@ -53,6 +53,7 @@ function _applyAM_(row){
   if (row.tipo==='compra')   return _amCompra_(row);
   if (row.tipo==='venta')    return _amVenta_(row);
   if (row.tipo==='pago')     return _amPago_(row);
+  if (row.tipo==='acobrar') return _amACobrar_(row);
   return _amGeneric_(row);
 }
 // function _amIngreso_(r){
@@ -195,4 +196,23 @@ function _amPago_(r){
   try{ pagosMarkStatus_(r.ref, r.cliente, cuotaN, 'ajustado'); }catch(e){}
 
   return { amId:id, restored: amount, cuotaN: cuotaN };
+}
+
+function _amACobrar_(r){
+  var id=_amId_('AM-ACobrar');
+  var pending = _sumPendingForTicket_ ? _sumPendingForTicket_(r.ref) : { sum: Math.max(r.aplazo||0,0), rows: [] };
+  var ingreso = Math.max(r.egreso||0,0); // revierte caja si hubo egreso
+  addCajaMov_('AM-ACobrar', id, 'Ajuste crear A Cobrar '+r.ref, r.cliente, '', ingreso, 0,
+    { subtotal:0, descuento:0, entrega:0, aplazo:0, arDelta: -(pending.sum||0) });
+
+  try{
+    var ac=SpreadsheetApp.getActive().getSheetByName('ACobrar');
+    if(ac && pending.rows.length){
+      ac.getRange(pending.rows[0],5,pending.rows.length,1).setValues(Array(pending.rows.length).fill([0]));
+      ac.getRange(pending.rows[0],6,pending.rows.length,1).setValues(Array(pending.rows.length).fill(['ajustado']));
+      ac.getRange(pending.rows[0],7,pending.rows.length,1).setValues(Array(pending.rows.length).fill(['AM-ACobrar '+id]));
+    }
+  }catch(e){}
+  try{ upsertReceivable_(r.cliente, r.cliente, -(pending.sum||0)); }catch(e){}
+  return { amId:id, adjustedAmount:(pending.sum||0), rows:(pending.rows||[]).length };
 }

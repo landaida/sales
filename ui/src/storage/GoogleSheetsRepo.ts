@@ -99,4 +99,7 @@ export class GoogleSheetsRepo implements IRepository {
 
   salesHistory(cursor=0, limit=5){ return this.jget(`action=sales_history&cursor=${cursor}&limit=${limit}`); }
   salesHistoryDetails(ticket=''){ return this.jget(`action=sale_details&ticket=${encodeURIComponent(ticket)}`); }
+
+  acobrarCreate(payload:any){ return this.jpost({ action:'acobrar_create', ...payload }); }
+
 }

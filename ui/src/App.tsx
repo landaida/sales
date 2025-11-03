@@ -9,8 +9,9 @@ import CashIncome from './components/CashIncome'
 import AdjustmentsView from './components/AdjustmentsView'
 import { OverlayProvider, GlobalOverlay } from './overlay/OverlayContext';
 import PagosView from './components/PagosView'
+import CreateARView from './components/CreateARView'
 
-type TabKey = '#caja'|'#importarpdf'|'#venta'|'#stock'|'#cobros'|'#pagos'|'#gastos'|'#ingreso'|'#ajustes'
+type TabKey = '#caja'|'#importarpdf'|'#venta'|'#stock'|'#cobros'|'#pagos'|'#gastos'|'#ingreso'|'#crearacobrar'|'#ajustes'
 const TABS: { key:TabKey; label:string }[] = [
   { key:'#caja',        label:'Caja' },
   { key:'#importarpdf', label:'Compras' },
@@ -20,6 +21,7 @@ const TABS: { key:TabKey; label:string }[] = [
   { key:'#pagos',       label:'Pagos'  },
   { key:'#gastos',      label:'Gastos' },
   { key:'#ingreso',     label:'Ingresos/Prestamo' },
+  { key:'#crearacobrar', label:'Crear A Cobrar' },
   { key:'#ajustes',     label:'Ajustes' },
 ]
 
@@ -94,6 +96,7 @@ export default function App(){
         {route==='#importarpdf' && <PurchaseOCRUpload />}
         {route==='#ingreso'     && <CashIncome />}
         {route==='#ajustes'     && <AdjustmentsView />}
+        {route==='#crearacobrar' && <CreateARView />}
       </main>
       {/* Overlay global renderizado UNA sola vez aquí */}
       <GlobalOverlay />

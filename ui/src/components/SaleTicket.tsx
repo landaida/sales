@@ -174,7 +174,8 @@ function recalcPlan(respectManual: boolean){
     const d = new Date(base);
     if (kind === 'semanal') d.setDate(d.getDate() + (i + 1) * 7); else d.setMonth(d.getMonth() + (i + 1));
     const exist = sch[i];
-    return { n: i + 1, date: exist?.date || d.toISOString().slice(0, 10), amount: 0, manual: respectManual ? exist?.manual : false };
+    const date = respectManual && exist?.manual ? exist.date : d.toISOString().slice(0,10);
+    return { n: i + 1, date, amount: 0, manual: respectManual ? exist?.manual : false };
   });
 
   if (!respectManual) next = next.map(s => ({ ...s, manual: false }));

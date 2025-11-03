@@ -238,6 +238,7 @@ function doPost(e){
   if (a==='cash_income')  return cashIncome_(data);
   if (a==='adjust_apply') return adjustApply_(String(data.moveId||''));
   if (a==='payable_pay') return ok_(payablePay_(data.refId, data.cuotaN, data.amount, data.note));
+  if (a==='acobrar_create') return ok_(acobrarCreate_(data));
   return bad_('unknown action')
 }
 
@@ -429,14 +430,12 @@ function ensureACobrar_(){
 /** Generate installment plan rows (not paid yet).
  *  kind: 'mensual'|'semanal'; n: number of installments; startDate: new Date(); total: number */
 /** Add a single installment row into ACobrar. */
-function addInstallment_(ticketId, cliente, n, fecha, monto){
+function addInstallment_(ticketId, cliente, n, fecha, monto, noteOpt){
   ensureACobrar_().appendRow([
     String(ticketId||''), String(cliente||''), Number(n||0),
-    (fecha instanceof Date)?fecha:new Date(fecha), Number(monto||0), 'pendiente', ''
+    (fecha instanceof Date)?fecha:new Date(fecha), Number(monto||0), 'pendiente', String(noteOpt || '')
   ]);
 }
-
-
 
 /** Save base64 PDF to Drive and return { fileId, url } */
 function savePdfToDrive_(b64, filename){
@@ -1135,6 +1134,59 @@ function pagosMarkStatus_(refId, persona, cuotaN, status){
     }
   }
   return false;
+}
+
+function acobrarCreate_(data){
+  var now=new Date(), c=data.customer||{};
+  var name=String(c.name||'').trim(), id=String(c.id||'').trim();
+  if(!name||!id) return ok_({ok:false,error:'customer required'});
+  try{ upsertClient_(name,id) }catch(e){}
+  var amount=Math.max(0,Number(data.amount||0));
+  var n=Math.max(0,Number(data.numCuotas||0));
+  var kind=String(data.kind||'mensual').toLowerCase();
+  var extract=!!(data.extractCash||data.extractFromCash);
+  if(amount<=0||n<=0) return ok_({ok:false,error:'invalid amount/n'});
+
+  var refId='AR-'+Utilities.formatDate(now,Session.getScriptTimeZone(),'yyyyMMddHHmmss')+'-'+(Math.random()*1e3|0);
+
+  if(Array.isArray(data.installments)&&data.installments.length>0){
+    data.installments.forEach(function(x,i){ addInstallment_(refId,name,Number(x.n||i+1),x.date||now,Number(x.amount||0), 'AR-'+refId); });
+    // _setARNoteForRef_(refId);
+  } else {
+    var per=Math.floor(amount/n), resto=amount-per*n, base=new Date(now);
+    for(var i=1;i<=n;i++){ var d=new Date(base); if(kind==='semanal') d.setDate(d.getDate()+i*7); else d.setMonth(d.getMonth()+i);
+      addInstallment_(refId,name,i,d, per+(i<=resto?1:0), 'AR-'+refId); }
+      // _setARNoteForRef_(refId);
+  }
+
+  var ingreso=0, egreso=extract?amount:0;
+  addCajaMov_('acobrar', refId, 'Crear A Cobrar', name, '', ingreso, egreso,
+    { subtotal:0, descuento:0, entrega:0, aplazo:amount, arDelta: amount });
+
+  try{ upsertReceivable_(id||name, name, amount); }catch(e){}
+  return { ok:true, refId, amount, n };
+}
+
+/**
+ * Set Nota='AR-<ref>' for all ACobrar rows of a given reference.
+ * Columns: Ref | Cliente | # | Fecha | Monto | Estado | Nota
+ */
+function _setARNoteForRef_(ref){
+  try{
+    var sh = sheetByName_('ACobrar', ['Ref','Cliente','#','Fecha','Monto','Estado','Nota']);
+    var last = sh.getLastRow();
+    if (last < 2) return 0;
+    var finder = sh.getRange(2,1,last-1,1).createTextFinder(String(ref)).matchEntireCell(true);
+    var cells = finder.findAll() || [];
+    for (var i=0;i<cells.length;i++){
+      var r = cells[i].getRow();
+      sh.getRange(r, 7).setValue('AR-' + String(ref)); // set Nota (col 7)
+    }
+    return cells.length;
+  }catch(e){
+    Logger.log('setARNote error: '+e);
+    return 0;
+  }
 }
 
 
